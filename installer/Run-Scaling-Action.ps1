@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-$Version='1.2.2'
+$Version='1.2.3'
 $RuntimeHash='__SCALING_RUNTIME_SHA256__'
 $FeederHash='__SCALING_FEEDER_SHA256__'
 $ReShadePatchHash='D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510'
@@ -64,7 +64,7 @@ function Download-GitHubReleaseAsset([string]$Repo,[string]$Tag,[string]$Asset,[
 }
 function Get-AutoTemp{
     if(-not $script:Temp){
-        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_122_'+[Guid]::NewGuid().ToString('N'))
+        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_123_'+[Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:Temp -Force|Out-Null
     }
     return $script:Temp
@@ -190,6 +190,50 @@ function Set-KeyEquals([string]$Path,[string]$Key,[string]$Value){
     }
     [IO.File]::WriteAllText($Path,$text,[Text.UTF8Encoding]::new($false))
 }
+# b-bridge 0.1.0 filtered out non-16:9 monitor modes. Preserve
+# modeCountCompatibility, which protects GTA IV's fixed-size mode array.
+function Remove-DxvkForcedAspectRatio([string]$Path){
+    if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){Fail "DXVK configuration is missing: $Path"}
+    $text=[IO.File]::ReadAllText($Path)
+    $pattern='(?im)^[ \t]*d3d9\.forceAspectRatio[ \t]*=[^\r\n]*(?:\r?\n|$)'
+    $patched=[regex]::Replace($text,$pattern,'')
+    if($patched-ne$text){
+        [IO.File]::WriteAllText($Path,$patched,[Text.UTF8Encoding]::new($false))
+        Write-Host 'Removed obsolete DXVK 16:9 aspect-ratio filter.' -ForegroundColor Green
+    }
+    if([regex]::IsMatch([IO.File]::ReadAllText($Path),'(?im)^[ \t]*d3d9\.forceAspectRatio[ \t]*=')){
+        Fail 'DXVK aspect-ratio filter still active after repair.'
+    }
+}
+
+# Fast upgrade from an intact 1.2.2 install: touch only dxvk.conf and the
+# receipt, preserving all existing DLAA/DLSS/FSR binaries and profiles.
+function Repair-V122AspectRatio([string]$Root){
+    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
+    $config=Join-Path $Root 'dxvk.conf'
+    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf) -or
+       -not(Test-Path -LiteralPath $config -PathType Leaf) -or
+       -not(Test-Foundation $Root) -or
+       -not(Test-Path -LiteralPath (Join-Path $Root '.trex\m3k-nr.ini'))){return $false}
+    $before=[IO.File]::ReadAllText($receipt)
+    if($before-notmatch '(?m)^Version=1\.2\.2\r?$'){return $false}
+    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE123_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
+    New-Item -ItemType Directory -Path $backup -Force|Out-Null
+    Copy-Item -LiteralPath $receipt -Destination (Join-Path $backup 'GTAIV_SCALING_INSTALLED.txt') -Force
+    Copy-Item -LiteralPath $config -Destination (Join-Path $backup 'dxvk.conf') -Force
+    Remove-DxvkForcedAspectRatio $config
+    $after=[regex]::Replace($before,'(?m)^Version=1\.2\.2(?=\r?$)','Version=1.2.3')
+    if($after-eq$before){Fail 'Cannot update v1.2.2 receipt after DXVK repair.'}
+    $after=$after.TrimEnd([char]13,[char]10)+[Environment]::NewLine+
+           'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine+
+           "Pre123Backup=$backup",
+        'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine
+    [IO.File]::WriteAllText($receipt,$after,[Text.UTF8Encoding]::new($false))
+    Write-Host 'GTA IV Scaling 1.2.2 -> 1.2.3 configuration-only upgrade complete.' -ForegroundColor Green
+    Write-Host 'Existing DLAA/DLSS/FSR files and scaling settings were preserved.' -ForegroundColor Green
+    return $true
+}
+
 function Ensure-Technique([string]$Path,[string]$Technique){
     if(-not(Test-Path -LiteralPath $Path)){return}
     $text=[IO.File]::ReadAllText($Path)
@@ -231,7 +275,7 @@ function Resolve-NrDll([object]$Gpu,[string]$OwnPath){
 }
 function Backup-ScalingFiles([string]$Root){
     $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
-    $dest=Join-Path $Root ("_GTAIV_SCALING_PRE122_BACKUP_"+$stamp)
+    $dest=Join-Path $Root ("_GTAIV_SCALING_PRE123_BACKUP_"+$stamp)
     New-Item -ItemType Directory -Path $dest -Force|Out-Null
     foreach($rel in @('d3d9.dll','dxvk.conf','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
         $src=Join-Path $Root $rel
@@ -259,6 +303,8 @@ function Install-Scaling([string]$Root){
     if(-not(Test-FusionFixFirstRun $Root)){Fail 'FusionFix is installed but has not completed its first run. Launch GTA IV once to the main menu, close it, then rerun setup.'}
     if(Get-Process GTAIV -ErrorAction SilentlyContinue){Fail 'Close GTA IV before installing.'}
     if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}
+
+    if(Repair-V122AspectRatio $Root){return}
 
     if(-not(Test-Foundation $Root)){
         if(-not $ReShadeSetup -or -not(Test-Path -LiteralPath $ReShadeSetup -PathType Leaf)){Fail 'Select the official ReShade 6.8.0 Full Add-On installer.'}
@@ -293,6 +339,7 @@ function Install-Scaling([string]$Root){
         Copy-Item (Join-Path $runtimeDir $name) (Join-Path $shaderDir $name) -Force
     }
     Set-KeyEquals (Join-Path $Root 'dxvk.conf') 'd3d9.samplerLodBias' '0.0'
+    Remove-DxvkForcedAspectRatio (Join-Path $Root 'dxvk.conf')
     Set-KeyEquals (Join-Path $trex 'bridge.conf') 'clientFrameCap' '0'
     Set-KeyEquals (Join-Path $trex 'bridge.conf') 'client.DirectInput.forward.mousePolicy' '3'
     Set-KeyEquals (Join-Path $trex 'bridge.conf') 'client.DirectInput.forward.keyboardPolicy' '3'
@@ -339,11 +386,11 @@ function Install-Scaling([string]$Root){
         "NvidiaRtxAvailable=$(if($gpu.IsRtx){1}else{0})",
         "DefaultScalingTechnology=$tech",
         "NeuralRendering=$(if($gpu.Series-in@(20,30,40,50)){'installed-off-by-default'}else{'not-applicable'})",
-        "Pre122Backup=$backup"
+        "Pre123Backup=$backup"
     )
     [IO.File]::WriteAllLines((Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'),$receipt,[Text.UTF8Encoding]::new($false))
     Write-Host ''
-    Write-Host 'GTA IV Scaling 1.2.2 installed / repaired successfully.' -ForegroundColor Green
+    Write-Host 'GTA IV Scaling 1.2.3 installed / repaired successfully.' -ForegroundColor Green
 }
 function Remove-ScalingLeftovers([string]$Root){
     foreach($name in @(
