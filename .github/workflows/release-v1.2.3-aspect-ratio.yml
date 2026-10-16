@@ -1,6 +1,8 @@
 name: GTA IV Scaling v1.2.3 aspect-ratio installer
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/release-v1.2.3-aspect-ratio.yml']
   push:
     branches: [main, fix/v1.2.3-aspect-ratio, fix/v1.2.3-runtime-file-hashes]
     paths: ['.github/workflows/release-v1.2.3-aspect-ratio.yml']
