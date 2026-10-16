@@ -2,7 +2,7 @@ name: GTA IV Scaling v1.2.3 aspect-ratio installer
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/v1.2.3-aspect-ratio]
+    branches: [main, fix/v1.2.3-aspect-ratio, fix/v1.2.3-runtime-file-hashes]
     paths: ['.github/workflows/release-v1.2.3-aspect-ratio.yml']
 permissions:
   contents: write
@@ -63,8 +63,36 @@ jobs:
           $oldR='A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3'
           $oldF='B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27'
           if(-not $core.Contains($oldR) -or -not $core.Contains($oldF)){throw 'Missing foundation hash anchors'}
+          # v1.2.3 patches dxvk.conf and can contain newer runtime DLLs than
+          # the foundation script was originally pinned against. Derive EVERY
+          # per-file SHA256 from the exact runtime ZIP that is being bundled.
           $core=$core.Replace($oldR,$env:RUNTIME_HASH).Replace($oldF,$env:FEEDER_HASH).Replace('GTAIV-DLSS-Setup.exe','GTAIV-Scaling-Setup-v1.2.3.exe')
-          [IO.File]::WriteAllText('.\installer\payload\Install-DLAA-Core-v1.2.3.bat',$core,[Text.UTF8Encoding]::new($false))
+          $hashBlock=[regex]::Match($core,'(?s)\$RuntimeHashes=@\{(.*?)\}')
+          if(-not $hashBlock.Success){throw 'Foundation runtime hash table missing'}
+          $entryPattern="(?m)^[ \t]*'([^']+)'[ \t]*=[ \t]*'([0-9A-Fa-f]{64})'[ \t]*;?[ \t]*\r?$"
+          $entries=[regex]::Matches($hashBlock.Groups[1].Value,$entryPattern)
+          if($entries.Count-lt10){throw "Incomplete foundation hash table: $($entries.Count) entries"}
+          foreach($entry in $entries){
+            $rel=$entry.Groups[1].Value
+            $runtimeFile=Join-Path '.\_runtime123' $rel
+            if(-not(Test-Path -LiteralPath $runtimeFile -PathType Leaf)){throw "Foundation runtime file missing: $rel"}
+            $actual=(Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash.ToUpperInvariant()
+            $core=$core.Replace($entry.Value,$entry.Value.Replace($entry.Groups[2].Value,$actual))
+          }
+          $foundationPath='.\installer\payload\Install-DLAA-Core-v1.2.3.bat'
+          [IO.File]::WriteAllText($foundationPath,$core,[Text.UTF8Encoding]::new($false))
+          # Fail the release build before shipping if any embedded hash does not
+          # match the packaged file (the previous build missed dxvk.conf here).
+          $pinnedBlock=[regex]::Match([IO.File]::ReadAllText($foundationPath),'(?s)\$RuntimeHashes=@\{(.*?)\}')
+          if(-not $pinnedBlock.Success){throw 'Generated foundation hash table missing'}
+          $pinnedEntries=[regex]::Matches($pinnedBlock.Groups[1].Value,$entryPattern)
+          if($pinnedEntries.Count-ne$entries.Count){throw 'Generated foundation hash count changed'}
+          foreach($entry in $pinnedEntries){
+            $rel=$entry.Groups[1].Value
+            $actual=(Get-FileHash -LiteralPath (Join-Path '.\_runtime123' $rel) -Algorithm SHA256).Hash.ToUpperInvariant()
+            if($entry.Groups[2].Value.ToUpperInvariant()-ne$actual){throw "Generated foundation SHA256 mismatch: $rel"}
+          }
+          Write-Host "PASS: all $($pinnedEntries.Count) foundation SHA256 values match the bundled runtime"
           $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action.ps1')
           foreach($marker in @('__SCALING_RUNTIME_SHA256__','__SCALING_FEEDER_SHA256__','Repair-V122AspectRatio','Remove-DxvkForcedAspectRatio')){
             if(-not $runner.Contains($marker)){throw "Missing marker $marker"}
