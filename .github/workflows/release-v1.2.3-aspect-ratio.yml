@@ -1,4 +1,4 @@
-name: GTA IV Scaling v1.2.3 aspect-ratio installer
+name: GTA IV Scaling v1.2.4 aspect-ratio installer
 on:
   workflow_dispatch:
   pull_request:
@@ -43,20 +43,20 @@ jobs:
           if([regex]::IsMatch($out,'(?im)^[ \t]*d3d9\.forceAspectRatio[ \t]*=')){throw 'Filter not removed'}
           if(-not([regex]::IsMatch($out,'(?im)^[ \t]*d3d9\.modeCountCompatibility[ \t]*=[ \t]*(true|1)\b'))){throw 'Safe mode-count option missing'}
           [IO.File]::WriteAllText($cfg,$out,[Text.UTF8Encoding]::new($false))
-          'GTA IV Scaling 1.2.3: v1.2.2 binaries, DXVK aspect fix'|Set-Content .\_runtime123\GTAIV-SCALING-VERSION.txt
+          'GTA IV Scaling 1.2.4: v1.2.2 binaries, DXVK aspect fix'|Set-Content .\_runtime123\GTAIV-SCALING-VERSION.txt
           $root=(Resolve-Path .\_runtime123).Path
           Get-ChildItem .\_runtime123 -Recurse -File | Where-Object {$_.Name-ne'SHA256SUMS.txt'} | ForEach-Object {
             (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash+'  '+$_.FullName.Substring($root.Length+1)
           }|Set-Content .\_runtime123\SHA256SUMS.txt -Encoding ASCII
           New-Item -ItemType Directory .\installer\payload -Force|Out-Null
-          Compress-Archive .\_runtime123\* .\installer\payload\GTAIV-Scaling-Runtime-v1.2.3.zip -CompressionLevel Optimal
+          Compress-Archive .\_runtime123\* .\installer\payload\GTAIV-Scaling-Runtime-v1.2.4.zip -CompressionLevel Optimal
           Copy-Item .\_base\ReShade64-bbridge.dll .\installer\payload\ReShade64-bbridge.dll
           $fh=(Get-FileHash .\_runtime123\dlss5-feed.addon64 -Algorithm SHA256).Hash.ToUpperInvariant()
           if($fh-ne'CEB478CC9409F1C284E4A702EFE5FFF9E3B2E4EB070315934D308C82F964DA50'){throw 'Feeder changed'}
           "FEEDER_HASH=$fh"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $rh=(Get-FileHash .\installer\payload\GTAIV-Scaling-Runtime-v1.2.3.zip -Algorithm SHA256).Hash.ToUpperInvariant()
+          $rh=(Get-FileHash .\installer\payload\GTAIV-Scaling-Runtime-v1.2.4.zip -Algorithm SHA256).Hash.ToUpperInvariant()
           "RUNTIME_HASH=$rh"|Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $rh|Set-Content .\installer\payload\GTAIV-Scaling-Runtime-v1.2.3.sha256 -Encoding ASCII
+          $rh|Set-Content .\installer\payload\GTAIV-Scaling-Runtime-v1.2.4.sha256 -Encoding ASCII
       - name: Rehash setup scripts and regression check
         shell: pwsh
         run: |
@@ -65,10 +65,10 @@ jobs:
           $oldR='A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3'
           $oldF='B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27'
           if(-not $core.Contains($oldR) -or -not $core.Contains($oldF)){throw 'Missing foundation hash anchors'}
-          # v1.2.3 patches dxvk.conf and can contain newer runtime DLLs than
+          # v1.2.4 patches dxvk.conf and can contain newer runtime DLLs than
           # the foundation script was originally pinned against. Derive EVERY
           # per-file SHA256 from the exact runtime ZIP that is being bundled.
-          $core=$core.Replace($oldR,$env:RUNTIME_HASH).Replace($oldF,$env:FEEDER_HASH).Replace('GTAIV-DLSS-Setup.exe','GTAIV-Scaling-Setup-v1.2.3.exe')
+          $core=$core.Replace($oldR,$env:RUNTIME_HASH).Replace($oldF,$env:FEEDER_HASH).Replace('GTAIV-DLSS-Setup.exe','GTAIV-Scaling-Setup-v1.2.4.exe')
           $hashBlock=[regex]::Match($core,'(?s)\$RuntimeHashes=@\{(.*?)\}')
           if(-not $hashBlock.Success){throw 'Foundation runtime hash table missing'}
           $entryPattern="(?m)^[ \t]*'([^']+)'[ \t]*=[ \t]*'([0-9A-Fa-f]{64})'[ \t]*;?[ \t]*\r?$"
@@ -81,7 +81,7 @@ jobs:
             $actual=(Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash.ToUpperInvariant()
             $core=$core.Replace($entry.Value,$entry.Value.Replace($entry.Groups[2].Value,$actual))
           }
-          $foundationPath='.\installer\payload\Install-DLAA-Core-v1.2.3.bat'
+          $foundationPath='.\installer\payload\Install-DLAA-Core-v1.2.4.bat'
           [IO.File]::WriteAllText($foundationPath,$core,[Text.UTF8Encoding]::new($false))
           # Fail the release build before shipping if any embedded hash does not
           # match the packaged file (the previous build missed dxvk.conf here).
@@ -102,7 +102,7 @@ jobs:
           $runner=$runner.Replace('__SCALING_RUNTIME_SHA256__',$env:RUNTIME_HASH).Replace('__SCALING_FEEDER_SHA256__',$env:FEEDER_HASH)
           [IO.File]::WriteAllText('.\installer\Run-Scaling-Action.ps1',$runner,[Text.UTF8Encoding]::new($false))
           [void][ScriptBlock]::Create($runner)
-          foreach($bat in @('.\install\Install-DLAA.bat','.\installer\payload\Install-DLAA-Core-v1.2.3.bat','.\install\Uninstall-DLAA.bat')){
+          foreach($bat in @('.\install\Install-DLAA.bat','.\installer\payload\Install-DLAA-Core-v1.2.4.bat','.\install\Uninstall-DLAA.bat')){
             $str=[IO.File]::ReadAllText($bat);$a=$str.IndexOf('#==POWERSHELL==#')
             if($a-ge0){[void][ScriptBlock]::Create($str.Substring($a+16))}
           }
@@ -125,7 +125,7 @@ jobs:
           if([regex]::IsMatch($cfg,'(?im)^[ \t]*d3d9\.forceAspectRatio[ \t]*=')){throw 'Forced ratio persisted'}
           if(-not $cfg.Contains('d3d9.modeCountCompatibility = True')){throw 'Mode-count protection lost'}
           if((Get-Content (Join-Path $demo '.trex\m3k-nr.ini') -Raw)-notmatch 'FSRScalePermille=667'){throw 'FSR settings modified'}
-          if((Get-Content (Join-Path $demo 'GTAIV_SCALING_INSTALLED.txt') -Raw)-notmatch 'Version=1.2.3'){throw 'Receipt not updated'}
+          if((Get-Content (Join-Path $demo 'GTAIV_SCALING_INSTALLED.txt') -Raw)-notmatch 'Version=1.2.4'){throw 'Receipt not updated'}
           Write-Host 'PASS: legacy 1.2.2 fast repair'
       - name: Compile installer
         shell: pwsh
@@ -137,25 +137,25 @@ jobs:
           if(-not(Test-Path $iscc)){throw 'ISCC missing'}
           & $iscc .\installer\GTAIV-Scaling-Setup.iss
           if($LASTEXITCODE-ne0){throw 'Inno compile failed'}
-          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.3.exe'
+          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.4.exe'
           if(-not(Test-Path $exe)){throw 'Installer absent'}
-          (Get-FileHash $exe -Algorithm SHA256).Hash.ToUpperInvariant() | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.3.sha256 -Encoding ASCII
+          (Get-FileHash $exe -Algorithm SHA256).Hash.ToUpperInvariant() | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.4.sha256 -Encoding ASCII
       - uses: actions/upload-artifact@v4
         with:
-          name: GTAIV-Scaling-v1.2.3-installer
+          name: GTAIV-Scaling-v1.2.4-installer
           if-no-files-found: error
           path: |
-            installer/out/GTAIV-Scaling-Setup-v1.2.3.exe
-            installer/out/GTAIV-Scaling-Setup-v1.2.3.sha256
-            installer/payload/GTAIV-Scaling-Runtime-v1.2.3.zip
-            installer/payload/GTAIV-Scaling-Runtime-v1.2.3.sha256
-      - name: Publish verified v1.2.3
+            installer/out/GTAIV-Scaling-Setup-v1.2.4.exe
+            installer/out/GTAIV-Scaling-Setup-v1.2.4.sha256
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.4.zip
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.4.sha256
+      - name: Publish verified v1.2.4
         if: github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          gh release view v1.2.3 --repo "$env:GITHUB_REPOSITORY" *> $null
-          if($LASTEXITCODE-eq0){throw 'v1.2.3 already exists'}
-          $assets=@('.\installer\out\GTAIV-Scaling-Setup-v1.2.3.exe','.\installer\out\GTAIV-Scaling-Setup-v1.2.3.sha256','.\installer\payload\GTAIV-Scaling-Runtime-v1.2.3.zip','.\installer\payload\GTAIV-Scaling-Runtime-v1.2.3.sha256')
-          gh release create v1.2.3 $assets --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "GTA IV Scaling v1.2.3 aspect-ratio hotfix" --notes-file .\RELEASE-v1.2.3.md --latest
+          gh release view v1.2.4 --repo "$env:GITHUB_REPOSITORY" *> $null
+          if($LASTEXITCODE-eq0){throw 'v1.2.4 already exists'}
+          $assets=@('.\installer\out\GTAIV-Scaling-Setup-v1.2.4.exe','.\installer\out\GTAIV-Scaling-Setup-v1.2.4.sha256','.\installer\payload\GTAIV-Scaling-Runtime-v1.2.4.zip','.\installer\payload\GTAIV-Scaling-Runtime-v1.2.4.sha256')
+          gh release create v1.2.4 $assets --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "GTA IV Scaling v1.2.4 aspect-ratio hotfix" --notes-file .\RELEASE-v1.2.4.md --latest
           if($LASTEXITCODE-ne0){throw 'Release upload failed'}
