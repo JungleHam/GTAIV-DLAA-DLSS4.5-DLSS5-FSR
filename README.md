@@ -18,10 +18,10 @@ Everything else required by the project is handled by the installer.
 ### Clean installation
 
 0. Install the latest, clean GTA IV (Steam version tested, Rockstar Game Launcher version wasn't but probably fine) 
-1. Download **`GTAIV-Scaling-Setup-v1.2.3.exe`** from the [Releases](https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR/releases) page.
+1. Download **`GTAIV-Scaling-Setup-v1.2.4.exe`** from the [Releases](https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR/releases) page.
 2. Run it as **Administrator**.
 3. Select the folder containing **`GTAIV.exe`**.
-4. Choose **Install / Repair GTA IV Scaling 1.2.3**.
+4. Choose **Install / Repair GTA IV Scaling 1.2.4**.
 5. If FusionFix is missing, the installer downloads and installs pinned **FusionFix 5.0.1**.
 6. Launch GTA IV once to the main menu, close the game, and run the installer again so FusionFix can create its first-run state.
 7. If the scaling foundation is not already installed, select the official **ReShade 6.8.0 Full Add-On Support** setup EXE when asked.
@@ -74,11 +74,11 @@ Home key -> Add-ons -> GTA IV Scaling 1.2.2
 
 ## Current release
 
-**v1.2.3** (installer/configuration hotfix; reconstruction runtime remains v1.2.2)
+**v1.2.4** (clean-install SHA256 packaging fix; reconstruction runtime remains v1.2.2)
 
-Installer: **GTAIV-Scaling-Setup-v1.2.3.exe**
+Installer: **GTAIV-Scaling-Setup-v1.2.4.exe**
 
-> **v1.2.3 hotfix:** removes the inherited DXVK forced-16:9 filter, which hid non-16:9 display modes from GTA IV. It preserves modeCountCompatibility for GTA IV's fixed-size mode list. Existing v1.2.2 users can install on top without replacing the calibrated scaling binaries. The in-game Add-ons title remains 1.2.2 because its binary is unchanged.
+> **v1.2.4 hotfix:** fixes the clean-install `dxvk.conf` checksum mismatch in v1.2.3 and retains the aspect-ratio fix. See [release notes](RELEASE-v1.2.4.md). Previously, **v1.2.3:** removes the inherited DXVK forced-16:9 filter, which hid non-16:9 display modes from GTA IV. It preserves modeCountCompatibility for GTA IV's fixed-size mode list. Existing v1.2.2 users can install on top without replacing the calibrated scaling binaries. The in-game Add-ons title remains 1.2.2 because its binary is unchanged.
 
 ## Screenshots
 

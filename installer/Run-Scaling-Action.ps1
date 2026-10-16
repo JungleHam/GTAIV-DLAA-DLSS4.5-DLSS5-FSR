@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-$Version='1.2.3'
+$Version='1.2.4'
 $RuntimeHash='__SCALING_RUNTIME_SHA256__'
 $FeederHash='__SCALING_FEEDER_SHA256__'
 $ReShadePatchHash='D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510'
@@ -64,7 +64,7 @@ function Download-GitHubReleaseAsset([string]$Repo,[string]$Tag,[string]$Asset,[
 }
 function Get-AutoTemp{
     if(-not $script:Temp){
-        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_123_'+[Guid]::NewGuid().ToString('N'))
+        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_124_'+[Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:Temp -Force|Out-Null
     }
     return $script:Temp
@@ -216,20 +216,19 @@ function Repair-V122AspectRatio([string]$Root){
        -not(Test-Foundation $Root) -or
        -not(Test-Path -LiteralPath (Join-Path $Root '.trex\m3k-nr.ini'))){return $false}
     $before=[IO.File]::ReadAllText($receipt)
-    if($before-notmatch '(?m)^Version=1\.2\.2\r?$'){return $false}
+    if($before-notmatch '(?m)^Version=1\.2\.[23]\r?$'){return $false}
     $backup=Join-Path $Root ('_GTAIV_SCALING_PRE123_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
     New-Item -ItemType Directory -Path $backup -Force|Out-Null
     Copy-Item -LiteralPath $receipt -Destination (Join-Path $backup 'GTAIV_SCALING_INSTALLED.txt') -Force
     Copy-Item -LiteralPath $config -Destination (Join-Path $backup 'dxvk.conf') -Force
     Remove-DxvkForcedAspectRatio $config
-    $after=[regex]::Replace($before,'(?m)^Version=1\.2\.2(?=\r?$)','Version=1.2.3')
-    if($after-eq$before){Fail 'Cannot update v1.2.2 receipt after DXVK repair.'}
+    $after=[regex]::Replace($before,'(?m)^Version=1\.2\.[23](?=\r?$)','Version=1.2.4')
+    if($after-eq$before){Fail 'Cannot update legacy receipt after DXVK repair.'}
     $after=$after.TrimEnd([char]13,[char]10)+[Environment]::NewLine+
            'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine+
-           "Pre123Backup=$backup",
-        'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine
+           "Pre124Backup=$backup"+[Environment]::NewLine
     [IO.File]::WriteAllText($receipt,$after,[Text.UTF8Encoding]::new($false))
-    Write-Host 'GTA IV Scaling 1.2.2 -> 1.2.3 configuration-only upgrade complete.' -ForegroundColor Green
+    Write-Host 'GTA IV Scaling -> 1.2.4 configuration-only upgrade complete.' -ForegroundColor Green
     Write-Host 'Existing DLAA/DLSS/FSR files and scaling settings were preserved.' -ForegroundColor Green
     return $true
 }
@@ -390,7 +389,7 @@ function Install-Scaling([string]$Root){
     )
     [IO.File]::WriteAllLines((Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'),$receipt,[Text.UTF8Encoding]::new($false))
     Write-Host ''
-    Write-Host 'GTA IV Scaling 1.2.3 installed / repaired successfully.' -ForegroundColor Green
+    Write-Host 'GTA IV Scaling 1.2.4 installed / repaired successfully.' -ForegroundColor Green
 }
 function Remove-ScalingLeftovers([string]$Root){
     foreach($name in @(
