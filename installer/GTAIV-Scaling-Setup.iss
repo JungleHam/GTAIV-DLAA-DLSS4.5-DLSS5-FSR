@@ -28,7 +28,7 @@ Uninstallable=no
 Source: "..\install\Install-DLAA.bat"; Flags: dontcopy
 Source: "payload\Install-DLAA-Core-v1.2.5.bat"; Flags: dontcopy; DestName: "Install-DLAA-Core.bat"
 Source: "..\install\Uninstall-DLAA.bat"; Flags: dontcopy
-Source: "Run-Scaling-Action.ps1"; Flags: dontcopy
+Source: "payload\Run-Scaling-Action.ps1"; Flags: dontcopy
 Source: "Update-NR.ps1"; Flags: dontcopy
 Source: "payload\GTAIV-Scaling-Runtime-v1.2.5.zip"; Flags: dontcopy
 Source: "payload\ReShade64-bbridge.dll"; Flags: dontcopy
