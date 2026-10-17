@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "updated_utc": "2026-10-17",
+  "notes": "Approved DLSS 5 Neural Rendering DLLs for GTA IV Scaling. SHA256 of extracted DLL is mandatory. MediaFire mirrors are community-hosted; signature is mandatory only for original RTX 50.",
+  "targets": {
+    "rtx20": {
+      "version": "310.9.16.0",
+      "label": "DLSS 5 NR 310.9.16 (ShortFuse FP16 compatibility; experimental on RTX 20)",
+      "archive": "rar",
+      "page_url": "https://www.mediafire.com/file/egamiha4q24l2wk/nvngx_dlssnr_compat-fp16-310.9.16-cuda13.4.3.rar/file",
+      "sha256": "CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED",
+      "signed_original": false,
+      "source": "ShortFuse compat-fp16-310.9.16-cuda13.4.3, community-hosted mirror"
+    },
+    "rtx30": {
+      "version": "310.9.16.0",
+      "label": "DLSS 5 NR 310.9.16 (ShortFuse FP16 compatibility; experimental on RTX 30)",
+      "archive": "rar",
+      "page_url": "https://www.mediafire.com/file/egamiha4q24l2wk/nvngx_dlssnr_compat-fp16-310.9.16-cuda13.4.3.rar/file",
+      "sha256": "CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED",
+      "signed_original": false,
+      "source": "ShortFuse compat-fp16-310.9.16-cuda13.4.3, community-hosted mirror"
+    },
+    "rtx40": {
+      "version": "310.9.16.0",
+      "label": "DLSS 5 NR 310.9.16 (ShortFuse FP16 compatibility; RTX 40 hardware-tested)",
+      "archive": "rar",
+      "page_url": "https://www.mediafire.com/file/egamiha4q24l2wk/nvngx_dlssnr_compat-fp16-310.9.16-cuda13.4.3.rar/file",
+      "sha256": "CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED",
+      "signed_original": false,
+      "source": "ShortFuse compat-fp16-310.9.16-cuda13.4.3, community-hosted mirror"
+    },
+    "rtx50": {
+      "version": "310.9.16.0",
+      "label": "DLSS 5 NR 310.9.16 (NVIDIA original, RTX 50)",
+      "archive": "zip",
+      "page_url": "https://www.mediafire.com/file/letnkh677lf9d79/nvngx_dlssnr_2026_10_16.zip/file",
+      "sha256": "2BC19BC09A7B89DD44F73E2AC0108FCC586E2154BDD0830F242F4F040E28789F",
+      "signed_original": true,
+      "source": "NVIDIA original via community-hosted RenoDX mirror"
+    }
+  }
+}
