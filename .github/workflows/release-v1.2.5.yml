@@ -278,11 +278,11 @@ jobs:
           Write-Host "All $($test.Count) internal runtime SHA256 values verified"
           [IO.File]::WriteAllText('.\installer\payload\Install-DLAA-Core-v1.2.5.bat',$core,[Text.UTF8Encoding]::new($false))
 
-          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action.ps1')
+          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action-v125.ps1')
           if(-not $runner.Contains('__SCALING_RUNTIME_SHA256__')){throw 'Runtime hash token missing'}
           if(-not $runner.Contains('__SCALING_FEEDER_SHA256__')){throw 'Feeder hash token missing'}
           $runner=$runner.Replace('__SCALING_RUNTIME_SHA256__',$env:SCALING_RUNTIME_HASH).Replace('__SCALING_FEEDER_SHA256__',$env:SCALING_FEEDER_HASH)
-          [IO.File]::WriteAllText('.\installer\Run-Scaling-Action.ps1',$runner,[Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText('.\installer\payload\Run-Scaling-Action.ps1',$runner,[Text.UTF8Encoding]::new($false))
 
           [void][ScriptBlock]::Create($runner)
           [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR.ps1'))
@@ -310,7 +310,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action.ps1')
+          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action-v125.ps1')
           [void][ScriptBlock]::Create($runner)
           foreach($marker in @(
             "ValidateSet('INSTALL','UPDATE_NR','REMOVE_KEEP_FUSIONFIX','REMOVE_ALL')",
