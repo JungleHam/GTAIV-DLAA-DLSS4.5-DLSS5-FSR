@@ -187,7 +187,7 @@ jobs:
             'M3K-FSR-P9C2: FSR 3.1.4 Vulkan context READY max=%ux%u depthInverted=%d RCAS=per-dispatch autoExposure=OFF(default exposure)',
             'M3K-P9C4: NVIDIA jitter compensation changed live -> %s (mode=%u); full raster jitter retained',
             'M3K-P9C5: calibrated NVIDIA temporal defaults = 8 phases, -X/-Y; AMD keeps independent FSR phase planning',
-            'GTA IV Scaling 1.2.2',
+            'GTA IV Scaling 1.2.5',
             'NVIDIA RTX capability: %s',
             'AMD FidelityFX FSR',
             'RCAS=per-dispatch',
