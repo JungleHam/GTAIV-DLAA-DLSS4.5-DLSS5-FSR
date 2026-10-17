@@ -1,5 +1,5 @@
 #define MyAppName "GTA IV Scaling"
-#define MyAppVersion "1.2.4"
+#define MyAppVersion "1.2.5"
 #define MyPublisher "JungleHam"
 #define MyRepo "https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR"
 
@@ -10,14 +10,14 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyPublisher}
 AppPublisherURL={#MyRepo}
 AppSupportURL={#MyRepo}/issues
-VersionInfoVersion=1.2.4.0
+VersionInfoVersion=1.2.5.0
 VersionInfoProductName=GTA IV Scaling
 DefaultDirName={tmp}\GTAIV-Scaling-Setup
 CreateAppDir=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=out
-OutputBaseFilename=GTAIV-Scaling-Setup-v1.2.4
+OutputBaseFilename=GTAIV-Scaling-Setup-v1.2.5
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -26,10 +26,11 @@ Uninstallable=no
 
 [Files]
 Source: "..\install\Install-DLAA.bat"; Flags: dontcopy
-Source: "payload\Install-DLAA-Core-v1.2.4.bat"; Flags: dontcopy; DestName: "Install-DLAA-Core.bat"
+Source: "payload\Install-DLAA-Core-v1.2.5.bat"; Flags: dontcopy; DestName: "Install-DLAA-Core.bat"
 Source: "..\install\Uninstall-DLAA.bat"; Flags: dontcopy
-Source: "Run-Scaling-Action.ps1"; Flags: dontcopy
-Source: "payload\GTAIV-Scaling-Runtime-v1.2.4.zip"; Flags: dontcopy
+Source: "payload\Run-Scaling-Action.ps1"; Flags: dontcopy
+Source: "Update-NR.ps1"; Flags: dontcopy
+Source: "payload\GTAIV-Scaling-Runtime-v1.2.5.zip"; Flags: dontcopy
 Source: "payload\ReShade64-bbridge.dll"; Flags: dontcopy
 
 [Code]
@@ -121,7 +122,7 @@ end;
 procedure UpdateOwnNrControls;
 var Visible: Boolean;
 begin
-  Visible := (SelectedAction = 0) and ((DetectedGpuSeries = 20) or (DetectedGpuSeries = 30) or (DetectedGpuSeries = 40) or (DetectedGpuSeries = 50));
+  Visible := ((SelectedAction = 0) or (SelectedAction = 3)) and ((DetectedGpuSeries = 20) or (DetectedGpuSeries = 30) or (DetectedGpuSeries = 40) or (DetectedGpuSeries = 50));
   OwnNrCheck.Visible := Visible;
   OwnNrLabel.Visible := Visible and OwnNrCheck.Checked;
   OwnNrEdit.Visible := Visible and OwnNrCheck.Checked;
@@ -150,20 +151,21 @@ begin
   DetectedGpuSeries := 0;
 
   PrepText :=
-    'GTA IV Scaling 1.2.4 installs one complete scaling package.' + #13#10 + #13#10 +
+    'GTA IV Scaling 1.2.5 installs one complete scaling package.' + #13#10 + #13#10 +
     'The installer detects your GPU and the game only shows scaling backends that make sense on that machine.' + #13#10 + #13#10 +
     'NVIDIA RTX: Off / NVIDIA DLAA-DLSS / AMD FidelityFX FSR.' + #13#10 +
     'Non-RTX: Off / AMD FidelityFX FSR.' + #13#10 + #13#10 +
     'FusionFix and project dependencies are handled automatically. On a fresh setup you may only need to select the official ReShade 6.8.0 Full Add-On installer.';
-  PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.4', 'Unified install / repair', 'One package, runtime capability filtering.', PrepText);
+  PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.5', 'Unified install / repair', 'One package, runtime capability filtering.', PrepText);
 
   GamePage := CreateInputDirPage(PrepPage.ID, 'Select GTA IV', 'Choose the folder that contains GTAIV.exe', 'Select the GTA IV game folder.', False, '');
   GamePage.Add('');
 
   ActionPage := CreateInputOptionPage(GamePage.ID, 'Install or remove', 'Choose an action', 'Normal users should use Install / Repair.', True, False);
-  ActionPage.Add('Install / Repair GTA IV Scaling 1.2.4');
+  ActionPage.Add('Install / Repair GTA IV Scaling 1.2.5');
   ActionPage.Add('Remove GTA IV Scaling, keep FusionFix');
   ActionPage.Add('Completely remove GTA IV Scaling and FusionFix');
+  ActionPage.Add('Update Neural Rendering DLL only (no other files changed)');
   ActionPage.Values[0] := True;
 
   GpuPage := CreateOutputMsgPage(ActionPage.ID, 'GPU capability', 'Scaling backends that will be shown in-game', '');
@@ -215,7 +217,7 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
   if PageID = GpuPage.ID then
-    Result := SelectedAction <> 0
+    Result := (SelectedAction <> 0) and (SelectedAction <> 3)
   else if PageID = ReShadePage.ID then
     Result := (SelectedAction <> 0) or FoundationPresent or (not FileExists(AddBackslash(GameDir) + 'dinput8.dll'));
 end;
@@ -239,8 +241,9 @@ begin
   else if CurPageID = ActionPage.ID then begin
     if ActionPage.Values[0] then SelectedAction := 0
     else if ActionPage.Values[1] then SelectedAction := 1
-    else SelectedAction := 2;
-    if SelectedAction = 0 then begin
+    else if ActionPage.Values[2] then SelectedAction := 2
+    else SelectedAction := 3;
+    if (SelectedAction = 0) or (SelectedAction = 3) then begin
       DetectedGpuSeries := DetectGpuSeries;
       GpuPage.MsgLabel.Caption := GpuSummary(DetectedGpuSeries);
       UpdateOwnNrControls;
@@ -253,8 +256,10 @@ begin
         Result := False;
         exit;
       end;
-      if CompareText(ExtractFileExt(OwnNrEdit.Text), '.dll') <> 0 then begin
-        MsgBox('The Neural Rendering path must point to a DLL file.', mbError, MB_OK);
+      if (CompareText(ExtractFileExt(OwnNrEdit.Text), '.dll') <> 0) and
+         (CompareText(ExtractFileExt(OwnNrEdit.Text), '.zip') <> 0) and
+         (CompareText(ExtractFileExt(OwnNrEdit.Text), '.rar') <> 0) then begin
+        MsgBox('Select a Neural Rendering DLL, ZIP or RAR file.', mbError, MB_OK);
         Result := False;
         exit;
       end;
@@ -272,9 +277,9 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
 begin
   Result := 'GTA IV folder:' + NewLine + '  ' + GameDir + NewLine + NewLine;
   if SelectedAction = 0 then begin
-    Result := Result + 'Action:' + NewLine + '  Install / Repair GTA IV Scaling 1.2.4' + NewLine + NewLine +
+    Result := Result + 'Action:' + NewLine + '  Install / Repair GTA IV Scaling 1.2.5' + NewLine + NewLine +
       'Package:' + NewLine +
-      '  GTA IV Scaling runtime 1.2.4' + NewLine +
+      '  GTA IV Scaling runtime 1.2.5' + NewLine +
       '  NVIDIA DLAA / DLSS support files' + NewLine +
       '  AMD FidelityFX FSR' + NewLine +
       '  Matched bridge / presenter / ReShade input patch' + NewLine;
@@ -282,6 +287,9 @@ begin
       Result := Result + '  GPU-matched Neural Rendering runtime (starts OFF)' + NewLine;
     Result := Result + NewLine + GpuSummary(DetectedGpuSeries);
   end
+  else if SelectedAction = 3 then
+    Result := Result + 'Action:' + NewLine + '  Update DLSS 5 Neural Rendering only' + NewLine +
+      'Detects RTX generation, downloads an approved hash-verified DLL, and backs up the previous DLL. No other rendering files or settings are changed.' + NewLine
   else if SelectedAction = 1 then
     Result := Result + 'Action:' + NewLine + '  Remove GTA IV Scaling, keep FusionFix' + NewLine +
       'This removes the scaling stack, .trex, ReShade project files, receipts, logs and backup folders, then restores the pre-scaling FusionFix state.' + NewLine
@@ -296,7 +304,8 @@ begin
   ExtractTemporaryFile('Install-DLAA-Core.bat');
   ExtractTemporaryFile('Uninstall-DLAA.bat');
   ExtractTemporaryFile('Run-Scaling-Action.ps1');
-  ExtractTemporaryFile('GTAIV-Scaling-Runtime-v1.2.4.zip');
+  ExtractTemporaryFile('Update-NR.ps1');
+  ExtractTemporaryFile('GTAIV-Scaling-Runtime-v1.2.5.zip');
   ExtractTemporaryFile('ReShade64-bbridge.dll');
 end;
 
@@ -308,7 +317,7 @@ var
 begin
   if CurStep = ssInstall then begin
     ExtractSetupFiles;
-    WizardForm.StatusLabel.Caption := 'Installing GTA IV Scaling 1.2.4...';
+    WizardForm.StatusLabel.Caption := 'Installing GTA IV Scaling 1.2.5...';
 
     PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
     ResultPath := ExpandConstant('{tmp}\GTAIV-Scaling-action-result.txt');
@@ -316,20 +325,21 @@ begin
 
     if SelectedAction = 0 then ActionName := 'INSTALL'
     else if SelectedAction = 1 then ActionName := 'REMOVE_KEEP_FUSIONFIX'
+    else if SelectedAction = 3 then ActionName := 'UPDATE_NR'
     else ActionName := 'REMOVE_ALL';
 
     Args := '-NoLogo -NoProfile -ExecutionPolicy Bypass -File ' +
       QuoteArg(ExpandConstant('{tmp}\Run-Scaling-Action.ps1')) +
       ' -Action ' + ActionName +
       ' -Game ' + QuoteArg(GameDir) +
-      ' -RuntimePackage ' + QuoteArg(ExpandConstant('{tmp}\GTAIV-Scaling-Runtime-v1.2.4.zip')) +
+      ' -RuntimePackage ' + QuoteArg(ExpandConstant('{tmp}\GTAIV-Scaling-Runtime-v1.2.5.zip')) +
       ' -ReShadePatch ' + QuoteArg(ExpandConstant('{tmp}\ReShade64-bbridge.dll')) +
       ' -ResultFile ' + QuoteArg(ResultPath);
 
     if (SelectedAction = 0) and (not FoundationPresent) and FileExists(ReShadePage.Values[0]) then
       Args := Args + ' -ReShadeSetup ' + QuoteArg(ReShadePage.Values[0]);
 
-    if (SelectedAction = 0) and OwnNrCheck.Visible and OwnNrCheck.Checked then
+    if ((SelectedAction = 0) or (SelectedAction = 3)) and OwnNrCheck.Visible and OwnNrCheck.Checked then
       Args := Args + ' -NrPackage ' + QuoteArg(OwnNrEdit.Text);
 
     if not Exec(PowerShell, Args, GameDir, SW_SHOW, ewWaitUntilTerminated, ResultCode) then
@@ -353,12 +363,14 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpFinished then begin
     if FusionFixInstalledThisRun then begin
-      WizardForm.FinishedLabel.Caption := 'FusionFix 5.0.1 was installed. Launch GTA IV once to the main menu, close it, then run GTA IV Scaling Setup 1.2.4 again.';
+      WizardForm.FinishedLabel.Caption := 'FusionFix 5.0.1 was installed. Launch GTA IV once to the main menu, close it, then run GTA IV Scaling Setup 1.2.5 again.';
       exit;
     end;
 
     if SelectedAction = 0 then
-      WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.4 is installed. Launch GTA IV, press Home, open Add-ons → GTA IV Scaling, and choose the scaling technology you want.'
+      WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.5 is installed. Launch GTA IV, press Home, open Add-ons → GTA IV Scaling, and choose the scaling technology you want.'
+    else if SelectedAction = 3 then
+      WizardForm.FinishedLabel.Caption := 'Neural Rendering DLL updated. Existing Scaling binaries and profiles are preserved. Restart GTA IV to use the new NR runtime.'
     else if SelectedAction = 1 then
       WizardForm.FinishedLabel.Caption := 'GTA IV Scaling was removed. FusionFix was kept and restored to its pre-scaling state.'
     else
