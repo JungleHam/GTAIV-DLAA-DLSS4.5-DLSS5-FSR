@@ -30,10 +30,10 @@ static inline bool BridgeSelectiveOptimizerEnabled(uint32_t site) {
 }
 
 """
-s=s.replace(anchor, helper+anchor,1)
 for n in range(21):
     assert old in s
     s=s.replace(old,f"BridgeSelectiveOptimizerEnabled({n})",1)
+s=s.replace(anchor, helper+anchor,1)
 assert s.count(old)==1, "Only the helper must still use the original getter"
 assert s.count("BridgeSelectiveOptimizerEnabled(")==22
 args.source.write_text(s,encoding="utf-8")
