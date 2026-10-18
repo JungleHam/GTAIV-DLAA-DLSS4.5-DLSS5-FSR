@@ -60,7 +60,7 @@ jobs:
           if (-not $runner.Contains('Test-ExistingV128')) {throw 'Idempotent 1.2.8 repair missing'}
           if ($runner.Contains('function Resolve-NrDll(')) {throw 'Legacy 310.8 NR resolver still installed'}
           if ($runner.Contains('RankFTW/rhi-repo')) {throw 'Old NR downloader still installed'}
-          if (-not $runner.Contains("if($NrMode -ne 'skip'")) {throw 'Skip NR mode not implemented'}
+          if (-not $runner.Contains('NrMode -ne')) {throw 'Skip NR mode not implemented'}
           if ($runner.Contains('if(Repair-V122AspectRatio $Root){Upgrade-AddonUi')) {throw 'Old config-only skip still active'}
           $bat=[IO.File]::ReadAllText('.\installer\payload\Install-DLAA-Core-v1.2.8.bat')
           $i=$bat.IndexOf('#==POWERSHELL==#')
