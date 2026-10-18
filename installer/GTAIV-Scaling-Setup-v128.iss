@@ -127,6 +127,11 @@ begin
   Available := ((SelectedAction = 0) or (SelectedAction = 3)) and
     ((DetectedGpuSeries = 20) or (DetectedGpuSeries = 30) or (DetectedGpuSeries = 40) or (DetectedGpuSeries = 50));
   LocalSelected := Available and (NrChoice.ItemIndex = 1);
+  NrChoiceLabel.Top := GpuPage.MsgLabel.Top + GpuPage.MsgLabel.Height + ScaleY(12);
+  NrChoice.Top := NrChoiceLabel.Top + NrChoiceLabel.Height + ScaleY(4);
+  OwnNrLabel.Top := NrChoice.Top + NrChoice.Height + ScaleY(10);
+  OwnNrEdit.Top := OwnNrLabel.Top + OwnNrLabel.Height + ScaleY(4);
+  OwnNrBrowseButton.Top := OwnNrEdit.Top - ScaleY(1);
   NrChoiceLabel.Visible := Available;
   NrChoice.Visible := Available;
   OwnNrLabel.Visible := LocalSelected;
@@ -264,7 +269,7 @@ begin
       GpuPage.MsgLabel.Caption := GpuSummary(DetectedGpuSeries);
       if SelectedAction = 3 then begin
         if NrChoice.Items.Count = 3 then NrChoice.Items.Delete(2);
-        if NrChoice.ItemIndex > 1 then NrChoice.ItemIndex := 0;
+        if (NrChoice.ItemIndex < 0) or (NrChoice.ItemIndex > 1) then NrChoice.ItemIndex := 0;
       end else if NrChoice.Items.Count = 2 then
         NrChoice.Items.Add('Skip NR (preserve existing DLL)');
       UpdateOwnNrControls;
