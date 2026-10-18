@@ -29,6 +29,7 @@ Source: "..\install\Install-DLAA.bat"; Flags: dontcopy
 Source: "payload\Install-DLAA-Core-v1.2.4.bat"; Flags: dontcopy; DestName: "Install-DLAA-Core.bat"
 Source: "..\install\Uninstall-DLAA.bat"; Flags: dontcopy
 Source: "Run-Scaling-Action.ps1"; Flags: dontcopy
+Source: "Install-Latest-FusionFix.ps1"; Flags: dontcopy
 Source: "payload\GTAIV-Scaling-Runtime-v1.2.4.zip"; Flags: dontcopy
 Source: "payload\ReShade64-bbridge.dll"; Flags: dontcopy
 
@@ -164,6 +165,7 @@ begin
   ActionPage.Add('Install / Repair GTA IV Scaling 1.2.4');
   ActionPage.Add('Remove GTA IV Scaling, keep FusionFix');
   ActionPage.Add('Completely remove GTA IV Scaling and FusionFix');
+  ActionPage.Add('Install / Update latest stable FusionFix ONLY (no Scaling or other mods)');
   ActionPage.Values[0] := True;
 
   GpuPage := CreateOutputMsgPage(ActionPage.ID, 'GPU capability', 'Scaling backends that will be shown in-game', '');
@@ -239,7 +241,8 @@ begin
   else if CurPageID = ActionPage.ID then begin
     if ActionPage.Values[0] then SelectedAction := 0
     else if ActionPage.Values[1] then SelectedAction := 1
-    else SelectedAction := 2;
+    else if ActionPage.Values[2] then SelectedAction := 2
+    else SelectedAction := 3;
     if SelectedAction = 0 then begin
       DetectedGpuSeries := DetectGpuSeries;
       GpuPage.MsgLabel.Caption := GpuSummary(DetectedGpuSeries);
@@ -282,6 +285,9 @@ begin
       Result := Result + '  GPU-matched Neural Rendering runtime (starts OFF)' + NewLine;
     Result := Result + NewLine + GpuSummary(DetectedGpuSeries);
   end
+  else if SelectedAction = 3 then
+    Result := Result + 'Action:' + NewLine + '  Install / Update latest stable FusionFix ONLY' + NewLine +
+      'Queries official stable releases, verifies the ZIP SHA-256, backs up replaced files, and preserves existing FusionFix settings. No scaling or other mods installed.' + NewLine
   else if SelectedAction = 1 then
     Result := Result + 'Action:' + NewLine + '  Remove GTA IV Scaling, keep FusionFix' + NewLine +
       'This removes the scaling stack, .trex, ReShade project files, receipts, logs and backup folders, then restores the pre-scaling FusionFix state.' + NewLine
@@ -306,6 +312,25 @@ var
   RawDetail: AnsiString;
   ResultCode: Integer;
 begin
+  if (CurStep = ssInstall) and (SelectedAction = 3) then begin
+    ExtractTemporaryFile('Install-Latest-FusionFix.ps1');
+    WizardForm.StatusLabel.Caption := 'Installing newest stable FusionFix (only)...';
+    PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+    ResultPath := ExpandConstant('{tmp}\GTAIV-FusionFix-action-result.txt');
+    DeleteFile(ResultPath);
+    Args := '-NoLogo -NoProfile -ExecutionPolicy Bypass -File ' +
+      QuoteArg(ExpandConstant('{tmp}\Install-Latest-FusionFix.ps1')) +
+      ' -Game ' + QuoteArg(GameDir) +
+      ' -ResultFile ' + QuoteArg(ResultPath);
+    if not Exec(PowerShell, Args, GameDir, SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Could not start FusionFix-only installer.');
+    if ResultCode <> 0 then begin
+      Detail := '';
+      if LoadStringFromFile(ResultPath, RawDetail) then Detail := String(RawDetail);
+      RaiseException('FusionFix install failed:' + #13#10 + Detail);
+    end;
+    exit;
+  end;
   if CurStep = ssInstall then begin
     ExtractSetupFiles;
     WizardForm.StatusLabel.Caption := 'Installing GTA IV Scaling 1.2.4...';
@@ -357,7 +382,9 @@ begin
       exit;
     end;
 
-    if SelectedAction = 0 then
+    if SelectedAction = 3 then
+      WizardForm.FinishedLabel.Caption := 'Latest stable FusionFix has been installed. Scaling, DLSS, FSR, ReShade and other mods have not been installed.'
+    else if SelectedAction = 0 then
       WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.4 is installed. Launch GTA IV, press Home, open Add-ons → GTA IV Scaling, and choose the scaling technology you want.'
     else if SelectedAction = 1 then
       WizardForm.FinishedLabel.Caption := 'GTA IV Scaling was removed. FusionFix was kept and restored to its pre-scaling state.'
