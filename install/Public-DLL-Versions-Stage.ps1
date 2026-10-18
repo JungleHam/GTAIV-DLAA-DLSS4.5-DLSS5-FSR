@@ -9,7 +9,7 @@ function Once([string]$old,[string]$new,[string]$label){
     $script:feed=$script:feed.Replace($old,$new)
 }
 $oldName='extern "C" __declspec(dllexport) const char *NAME = "GTA IV Scaling 1.2.2";'
-$newName='extern "C" __declspec(dllexport) const char *NAME = "GTA IV Scaling 1.2.5";'
+$newName='extern "C" __declspec(dllexport) const char *NAME = "GTA IV Scaling 1.2.6";'
 Once $oldName $newName 'addon title'
 $helper=@'
 #include <winver.h>
