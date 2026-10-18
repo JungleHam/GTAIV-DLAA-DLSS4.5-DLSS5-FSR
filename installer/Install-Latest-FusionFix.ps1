@@ -49,8 +49,8 @@ function GetArchiveInfo($Release){
     }
     $hash=$Matches[1].ToUpperInvariant()
     $url=[string]$asset.browser_download_url
-    $expectedUrl="https://github.com/$Repo/releases/download/$tag/$Asset"
-    if($url -cne $expectedUrl){throw 'FusionFix ZIP download URL does not match the official GitHub release.'}
+    $expectedUrl=('https://github.com/{0}/releases/download/{1}/{2}' -f $Repo,$tag,$Asset)
+    if($url -cne $expectedUrl){throw "FusionFix ZIP URL does not match the official GitHub release. Got: [$url] Expected: [$expectedUrl]"}
     return [pscustomobject]@{Version=$tag;Url=$url;Hash=$hash}
 }
 function AssertArchive([string]$ZipPath,[string]$Sha){
