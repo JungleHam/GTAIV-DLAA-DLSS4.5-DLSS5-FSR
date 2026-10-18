@@ -1,0 +1,65 @@
+name: Bridge loading-artwork shadow A-B (experimental)
+on:
+  push:
+    branches:
+      - experiment/bridge-redundant-state-split-20261018
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-client:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - texture-forward
+          - shader-cache-only
+          - shader-forward
+    steps:
+      - name: Checkout diagnostic project scripts
+        uses: actions/checkout@v4
+
+      - name: Checkout exact b-bridge client source from project manifest
+        uses: actions/checkout@v4
+        with:
+          repository: gutbash/b-bridge
+          ref: 1dad5e6d4dcf8647e354aa9a87f611256fb61142
+          path: bridge
+          submodules: recursive
+
+      - name: Install build tools
+        run: python -m pip install meson==0.64.1 ninja
+
+      - name: Apply isolated source change
+        run: python tools/bridge-state-split-experiment/patch.py --source bridge/src/client/d3d9_device.cpp --variant ${{ matrix.variant }}
+
+      - name: Build x86 bridge client (MSVC, release)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+          Push-Location bridge
+          try {
+            . .\build_bridge.ps1
+            Build -Platform x86 -BuildFlavour release -BuildSubDir "_split_${{ matrix.variant }}"
+            if ($LASTEXITCODE -ne 0) { throw "Bridge build exit code $LASTEXITCODE" }
+          } finally { Pop-Location }
+          if (-not (Test-Path 'bridge/_output/d3d9.dll')) { throw 'No d3d9.dll emitted' }
+
+      - name: Stage single diagnostic DLL
+        shell: pwsh
+        run: |
+          $dir = "diagnostic/${{ matrix.variant }}"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          Copy-Item -LiteralPath 'bridge/_output/d3d9.dll' -Destination "$dir/d3d9.dll"
+          Get-FileHash "$dir/d3d9.dll" -Algorithm SHA256 | Format-List
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtaiv-bridge-client-${{ matrix.variant }}
+          path: diagnostic/
+          retention-days: 10
