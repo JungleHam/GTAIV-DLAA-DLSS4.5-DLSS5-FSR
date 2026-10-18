@@ -99,7 +99,7 @@ function InstallLatest{
     }
     $script:TempPath=Join-Path $env:TEMP ('GTAIV_FUSIONFIX_'+[Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $script:TempPath -Force|Out-Null
-    $zip=Join-Path $script:TempPath $Asset
+    $zip=Join-Path $script:TempPath $AssetName
     if($LocalArchive){
         if(-not(Test-Path -LiteralPath $LocalArchive -PathType Leaf)){throw 'Local test archive does not exist.'}
         Copy-Item -LiteralPath $LocalArchive -Destination $zip -Force
