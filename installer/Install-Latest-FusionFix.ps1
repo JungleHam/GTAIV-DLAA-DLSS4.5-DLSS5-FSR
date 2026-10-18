@@ -58,6 +58,7 @@ function AssertArchive([string]$ZipPath,[string]$Sha){
     $actual=(Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToUpperInvariant()
     if($actual-ne$Sha){throw "FusionFix ZIP SHA256 mismatch. Expected $Sha, got $actual. Nothing was installed."}
     Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive=[IO.Compression.ZipFile]::OpenRead($ZipPath)
     try{
         foreach($entry in $archive.Entries){
@@ -79,7 +80,7 @@ function InstallLatest{
     foreach($process in @('GTAIV','NvRemixBridge')){
         if(Get-Process -Name $process -ErrorAction SilentlyContinue){throw "Close $process.exe before installing FusionFix."}
     }
-    $release=GetArchiveInfo
+    $release=LatestRelease
     $info=GetArchiveInfo $release
     Say "Latest stable FusionFix: $($info.Version)"
     Say "Official source: $($info.Url)"
