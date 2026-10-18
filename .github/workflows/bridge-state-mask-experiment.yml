@@ -1,0 +1,59 @@
+name: Bridge selective state mask diagnostic
+on:
+  push:
+    branches:
+      - experiment/bridge-selective-mask-20261018
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-bridge-client:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - name: Checkout diagnostic patch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact pinned b-bridge
+        uses: actions/checkout@v4
+        with:
+          repository: gutbash/b-bridge
+          ref: 1dad5e6d4dcf8647e354aa9a87f611256fb61142
+          path: bridge
+          submodules: recursive
+
+      - name: Set up Meson and Ninja
+        run: python -m pip install meson==0.64.1 ninja
+
+      - name: Patch bridge client
+        run: python tools/bridge-state-mask-experiment/patch.py --source bridge/src/client/d3d9_device.cpp
+
+      - name: Compile x86 bridge client, release MSVC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+          Push-Location bridge
+          try {
+            . .\build_bridge.ps1
+            Build -Platform x86 -BuildFlavour release -BuildSubDir '_compRelease_mask'
+            if ($LASTEXITCODE -ne 0) { throw "Bridge build failed: $LASTEXITCODE" }
+          } finally { Pop-Location }
+          if (-not (Test-Path 'bridge/_output/d3d9.dll')) { throw 'Missing diagnostic d3d9.dll' }
+
+      - name: Stage DLL and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path diagnostic -Force | Out-Null
+          Copy-Item bridge/_output/d3d9.dll diagnostic/d3d9.dll
+          (Get-FileHash diagnostic/d3d9.dll -Algorithm SHA256).Hash | Set-Content diagnostic/SHA256.txt
+          Write-Host ((Get-Item diagnostic/d3d9.dll).Length)
+      
+      - name: Upload diagnostic client
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtaiv-bridge-selective-mask-client
+          path: diagnostic/
+          retention-days: 10
