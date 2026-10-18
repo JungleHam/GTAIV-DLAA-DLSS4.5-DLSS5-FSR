@@ -21,7 +21,7 @@ jobs:
       - name: Check out source at the pinned release commit
         uses: actions/checkout@v4
 
-      - name: Download successfully tested v1.2.6 runtime source
+      - name: Reuse pinned v1.2.6 foundation inputs
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          python tools/release-pin-v127.py --base _base --client _diagnostic/d3d9.dll
+          python tools/release-pin-v128.py --base _base --client _diagnostic/d3d9.dll
           if ($LASTEXITCODE -ne 0) {throw "v1.2.8 package generator failed ($LASTEXITCODE)"}
 
       - name: Validate complete installer scripts, runtime and regression checks
