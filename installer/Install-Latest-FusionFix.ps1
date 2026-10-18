@@ -12,7 +12,7 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $script:TempPath=$null
 $Repo='ThirteenAG/GTAIV.EFLC.FusionFix'
-$Asset='GTAIV.EFLC.FusionFix.zip'
+$AssetName='GTAIV.EFLC.FusionFix.zip'
 $ReceiptName='GTAIV-FUSIONFIX-LATEST.json'
 function Say([string]$Message){Write-Host $Message}
 function WriteResult([string]$Message){
@@ -40,16 +40,16 @@ function GetArchiveInfo($Release){
     if($Release.draft -or $Release.prerelease){throw 'GitHub returned a draft/prerelease, not a stable FusionFix release.'}
     $tag=[string]$Release.tag_name
     if($tag -notmatch '^v[0-9]+\.[0-9]+(?:\.[0-9]+){0,2}$'){throw "Unexpected FusionFix version: $tag"}
-    $assets=@($Release.assets|Where-Object {$_.name -ceq $Asset})
+    $assets=@($Release.assets|Where-Object {$_.name -ceq $AssetName})
     if($assets.Count -ne 1){throw "Stable $tag does not have the expected official FusionFix ZIP asset."}
-    $asset=$assets[0]
-    $digest=[string]$asset.digest
+    $matchedAsset=$assets[0]
+    $digest=[string]$matchedAsset.digest
     if($digest -notmatch '^sha256:([0-9a-fA-F]{64})$'){
         throw "FusionFix $tag has no published SHA256 digest. Refusing an unverified install."
     }
     $hash=$Matches[1].ToUpperInvariant()
-    $url=[string]$asset.browser_download_url
-    $expectedUrl=('https://github.com/{0}/releases/download/{1}/{2}' -f $Repo,$tag,$Asset)
+    $url=[string]$matchedAsset.browser_download_url
+    $expectedUrl=('https://github.com/{0}/releases/download/{1}/{2}' -f $Repo,$tag,$AssetName)
     if($url -cne $expectedUrl){throw "FusionFix ZIP URL does not match the official GitHub release. Got: [$url] Expected: [$expectedUrl]"}
     return [pscustomobject]@{Version=$tag;Url=$url;Hash=$hash}
 }
