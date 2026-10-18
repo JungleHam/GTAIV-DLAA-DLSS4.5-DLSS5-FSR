@@ -1,0 +1,140 @@
+name: GTA IV Scaling v1.2.8 NR installer maintenance
+on:
+  push:
+    branches: [maintenance/v1.2.8-nr-installer]
+    paths: ['.github/workflows/release-v1.2.8.yml', 'installer/**', 'tools/release-pin-v128.py']
+  workflow_dispatch:
+  pull_request:
+    paths: ['installer/**', 'tools/release-pin-v128.py', '.github/workflows/release-v1.2.8.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-validate-publish:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out source at the pinned release commit
+        uses: actions/checkout@v4
+
+      - name: Download successfully tested v1.2.6 runtime source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_base' -Force | Out-Null
+          gh run download 39115183838 --repo "$env:GITHUB_REPOSITORY" -n 'GTAIV-Scaling-v1.2.6-release-prep' -D '_base'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve approved v1.2.6 source artifacts'}
+          if (-not (Test-Path '_base/installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip')) {throw 'Missing original runtime'}
+
+      - name: Download exact hardware-tested 32-bit bridge client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_diagnostic' -Force | Out-Null
+          gh run download 39128635228 --repo "$env:GITHUB_REPOSITORY" -n 'gtaiv-bridge-selective-mask-client' -D '_diagnostic'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve validated diagnostic client'}
+          $expected='B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF'
+          $actual=(Get-FileHash '_diagnostic/d3d9.dll' -Algorithm SHA256).Hash
+          if ($actual -ne $expected) {throw "Wrong b-bridge client $actual"}
+          Write-Host "Pinned client verified $actual"
+
+      - name: Generate v1.2.8 package and install-time checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tools/release-pin-v127.py --base _base --client _diagnostic/d3d9.dll
+          if ($LASTEXITCODE -ne 0) {throw "v1.2.8 package generator failed ($LASTEXITCODE)"}
+
+      - name: Validate complete installer scripts, runtime and regression checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runner=[IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action.ps1')
+          [void][ScriptBlock]::Create($runner)
+          if (-not $runner.Contains('Repair-V126BridgePin')) {throw 'Bridge-only upgrade not deployed'}
+          if (-not $runner.Contains('Repair-V127InstallerOnly')) {throw 'Receipt-only v1.2.7 maintenance missing'}
+          if (-not $runner.Contains('Test-ExistingV128')) {throw 'Idempotent 1.2.8 repair missing'}
+          if ($runner.Contains('function Resolve-NrDll(')) {throw 'Legacy 310.8 NR resolver still installed'}
+          if ($runner.Contains('RankFTW/rhi-repo')) {throw 'Old NR downloader still installed'}
+          if (-not $runner.Contains("if($NrMode -ne 'skip'")) {throw 'Skip NR mode not implemented'}
+          if ($runner.Contains('if(Repair-V122AspectRatio $Root){Upgrade-AddonUi')) {throw 'Old config-only skip still active'}
+          $bat=[IO.File]::ReadAllText('.\installer\payload\Install-DLAA-Core-v1.2.8.bat')
+          $i=$bat.IndexOf('#==POWERSHELL==#')
+          if ($i -lt 0) {throw 'Foundation PowerShell marker missing'}
+          [void][ScriptBlock]::Create($bat.Substring($i+16))
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1'))
+          $nr=[IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1')
+          $fast=$nr.IndexOf('if(-not $LocalPackage -and (Test-Path')
+          $fetch=$nr.IndexOf('Invoke-WebRequest -Uri $url')
+          if($fast -lt 0 -or $fetch -lt 0 -or $fast -ge $fetch){throw 'NR already-current check must precede package fetch'}
+          $iss=[IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup-v128.iss')
+          foreach($token in @('Automatic (download only if needed)','Use my local DLL / ZIP / RAR','Skip NR (preserve existing DLL)',' -NrMode local -NrPackage ',' -NrMode skip')){
+            if(-not $iss.Contains($token)){throw "Installer NR choice missing: $token"}
+          }
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Install-Latest-FusionFix.ps1'))
+          $archive='.\installer\payload\GTAIV-Scaling-Runtime-v1.2.8.zip'
+          $record=([IO.File]::ReadAllText('.\installer\payload\GTAIV-Scaling-Runtime-v1.2.8.sha256')).Trim()
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $record) {throw 'Runtime integrity mismatch'}
+          $dll=(Get-FileHash '_runtime127/d3d9.dll' -Algorithm SHA256).Hash
+          if ($dll -ne 'B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF') {throw 'Client mismatch'}
+          $cfg=[IO.File]::ReadAllText('_runtime127/bridge.conf')
+          foreach($required in @('eliminateRedundantSetterCalls = True','clientStateBatch = True','clientRedundantBypassMask = 1032192')) {
+            if (-not $cfg.Contains($required)) {throw "Bridge pin missing: $required"}
+          }
+          if (-not ([IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup-v128.iss')).Contains('1.2.8')) {throw 'Wrong installer version'}
+          Write-Host 'All package, checksum, PowerShell syntax, and pin regression checks passed'
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup dependency unavailable'}
+
+      - name: Compile v1.2.8 complete Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $compiler=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {throw 'ISCC missing'}
+          & $compiler .\installer\GTAIV-Scaling-Setup-v128.iss
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup compilation failed'}
+          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.8.exe'
+          if (-not (Test-Path $exe)) {throw 'v1.2.8 installer EXE missing'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash
+          $sha | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.8.sha256 -Encoding ASCII
+          Write-Host "Installer SHA256: $sha"
+
+      - name: Publish build artifacts for audit and download
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-Scaling-v1.2.8-pinned-release
+          path: |
+            installer/out/GTAIV-Scaling-Setup-v1.2.8.exe
+            installer/out/GTAIV-Scaling-Setup-v1.2.8.sha256
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.8.zip
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.8.sha256
+            installer/payload/dlss5-feed-v1.2.8.sha256
+            RELEASE-v1.2.8.md
+          retention-days: 90
+
+      - name: Publish public GitHub release after all checks succeed
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          gh release view v1.2.8 --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -eq 0) {throw 'v1.2.8 tag already exists; refusing to overwrite'}
+          $files=@(
+            '.\installer\out\GTAIV-Scaling-Setup-v1.2.8.exe',
+            '.\installer\out\GTAIV-Scaling-Setup-v1.2.8.sha256',
+            '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.8.zip',
+            '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.8.sha256',
+            '.\installer\payload\dlss5-feed-v1.2.8.sha256'
+          )
+          gh release create v1.2.8 @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title 'GTA IV Scaling v1.2.8 - NR installer maintenance' --notes-file '.\RELEASE-v1.2.8.md' --latest
+          if ($LASTEXITCODE -ne 0) {throw 'Release publication failed'}
+          Write-Host 'Published v1.2.8 installer maintenance with unchanged approved rendering binaries'
