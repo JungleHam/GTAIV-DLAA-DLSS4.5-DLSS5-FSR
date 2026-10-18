@@ -1,0 +1,99 @@
+name: FusionFix latest-only launcher (Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/latest-fusionfix-standalone]
+  pull_request:
+    paths:
+      - 'installer/Install-Latest-FusionFix.ps1'
+      - 'installer/FusionFix-Only-Setup.iss'
+      - 'installer/GTAIV-Scaling-Setup.iss'
+      - '.github/workflows/fusionfix-latest-launcher.yml'
+jobs:
+  windows-compile-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify synthetic FusionFix-only installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $script=(Resolve-Path './installer/Install-Latest-FusionFix.ps1').Path
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText($script))
+          $fixture=Join-Path $env:RUNNER_TEMP 'gtaiv-ff-test'
+          $game=Join-Path $fixture 'GTAIV'
+          $src=Join-Path $fixture 'zipdata'
+          New-Item -ItemType Directory -Force -Path $game,"$game/plugins","$src/plugins","$src/update/pc"|Out-Null
+          'mock-game'|Set-Content "$game/GTAIV.exe"
+          'old-loader'|Set-Content "$game/dinput8.dll"
+          'user-defined-value'|Set-Content "$game/plugins/GTAIV.EFLC.FusionFix.ini"
+          'not-a-mod'|Set-Content "$game/unrelated.txt"
+          'new-loader'|Set-Content "$src/dinput8.dll"
+          'fusionfix-module'|Set-Content "$src/plugins/GTAIV.EFLC.FusionFix.asi"
+          'new-defaults'|Set-Content "$src/plugins/GTAIV.EFLC.FusionFix.ini"
+          'asset-data'|Set-Content "$src/update/pc/sample.txt"
+          $zip=Join-Path $fixture 'ff.zip'
+          Compress-Archive -Path "$src/*" -DestinationPath $zip
+          $sha=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $release=@{tag_name='v9.9.9';draft=$false;prerelease=$false;assets=@(@{
+            name='GTAIV.EFLC.FusionFix.zip'
+            digest="sha256:$sha"
+            browser_download_url='https://github.com/ThirteenAG/GTAIV.EFLC.FusionFix/releases/download/v9.9.9/GTAIV.EFLC.FusionFix.zip'
+          })}|ConvertTo-Json -Depth 8
+          $meta=Join-Path $fixture 'release.json'
+          [IO.File]::WriteAllText($meta,$release)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Game $game -TestReleaseMetadataPath $meta -CheckOnly
+          if($LASTEXITCODE-ne0){throw 'CheckOnly release query failed'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Game $game -TestReleaseMetadataPath $meta -LocalArchive $zip
+          if($LASTEXITCODE-ne0){throw 'Synthetic FusionFix installation failed'}
+          if((Get-Content "$game/dinput8.dll" -Raw).Trim()-ne'new-loader'){throw 'Loader not installed'}
+          if((Get-Content "$game/plugins/GTAIV.EFLC.FusionFix.ini" -Raw).Trim()-ne'user-defined-value'){throw 'Settings overwritten'}
+          if((Get-Content "$game/unrelated.txt" -Raw).Trim()-ne'not-a-mod'){throw 'Unrelated file changed'}
+          if(-not(Test-Path "$game/plugins/GTAIV.EFLC.FusionFix.asi")){throw 'ASI not installed'}
+          if((Test-Path "$game/.trex")-or(Test-Path "$game/GTAIV_SCALING_INSTALLED.txt")){throw 'Scaling was installed'}
+          $backups=@(Get-ChildItem -Directory "$game/_GTAIV_FUSIONFIX_BACKUP_*")
+          if($backups.Count-ne1){throw 'Expected exactly one backup'}
+          if((Get-Content (Join-Path $backups[0].FullName 'dinput8.dll') -Raw).Trim()-ne'old-loader'){throw 'Backup did not preserve original loader'}
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Game $game -TestReleaseMetadataPath $meta -LocalArchive $zip
+          if($LASTEXITCODE-ne0){throw 'Idempotence recheck failed'}
+          if(@(Get-ChildItem -Directory "$game/_GTAIV_FUSIONFIX_BACKUP_*").Count -ne 1){throw 'Redundant reinstall occurred'}
+          Write-Host 'PASS: metadata, SHA256, installation, settings, backup, no other mods, repeat install'
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile standalone FusionFix launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          & $iscc ./installer/FusionFix-Only-Setup.iss
+          if($LASTEXITCODE-ne0){throw 'FusionFix installer compile failed'}
+          $exe='./installer/out/GTAIV-FusionFix-Latest-Launcher-v1.0.0.exe'
+          if(-not(Test-Path $exe)){throw 'Standalone launcher EXE missing'}
+          (Get-FileHash $exe -Algorithm SHA256).Hash|Set-Content './installer/out/GTAIV-FusionFix-Latest-Launcher-v1.0.0.sha256'
+
+      - name: Syntax-check integrated Scaling installer menu
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          # Mock payloads only for compiling the Inno UI; delete the dummy EXE.
+          $payload='./installer/payload'
+          New-Item -ItemType Directory -Path $payload -Force|Out-Null
+          'fixture'|Set-Content "$payload/Install-DLAA-Core-v1.2.4.bat"
+          'fixture'|Set-Content "$payload/GTAIV-Scaling-Runtime-v1.2.4.zip"
+          'fixture'|Set-Content "$payload/ReShade64-bbridge.dll"
+          $iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          & $iscc ./installer/GTAIV-Scaling-Setup.iss
+          if($LASTEXITCODE-ne0){throw 'Scaling installer UI syntax test failed'}
+          Remove-Item './installer/out/GTAIV-Scaling-Setup-v1.2.4.exe' -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-FusionFix-Latest-Launcher-v1.0.0
+          path: |
+            installer/out/GTAIV-FusionFix-Latest-Launcher-v1.0.0.exe
+            installer/out/GTAIV-FusionFix-Latest-Launcher-v1.0.0.sha256
+          if-no-files-found: error
