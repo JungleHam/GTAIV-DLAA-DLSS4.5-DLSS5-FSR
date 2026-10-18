@@ -5,7 +5,7 @@ on:
   pull_request:
     paths: ['.github/workflows/release-v1.2.6.yml', 'install/Public-DLL-Versions-Stage.ps1', 'installer/**', 'manifests/nr-versions.json']
 concurrency:
-  group: gtaiv-scaling-v122-release-prep-${{ github.ref }}
+  group: gtaiv-scaling-v126-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
