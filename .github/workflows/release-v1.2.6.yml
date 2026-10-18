@@ -1,0 +1,415 @@
+name: GTA IV Scaling v1.2.6 hotfix prep
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/release-v1.2.6.yml', 'install/Public-DLL-Versions-Stage.ps1', 'installer/**', 'manifests/nr-versions.json']
+concurrency:
+  group: gtaiv-scaling-v126-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-fsr-p9:
+    runs-on: windows-2022
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.328.1
+          cache: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Checkout frozen GTA IV rendering core
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR.git _project
+          git -C _project checkout 57a8bd2ede8d7b4b721b1981bc0e8a7e6cbe084f
+          $sha=(git -C _project rev-parse HEAD).Trim()
+          if ($sha -ne '57a8bd2ede8d7b4b721b1981bc0e8a7e6cbe084f') { throw "Wrong frozen core: $sha" }
+
+      - name: Attach production stages and GTA IV Scaling v1.2.6
+        shell: pwsh
+        run: |
+          $tool='.\_project\tools\m3k-nr'
+          Copy-Item .\install\Public-ReShade-Controls-Stage.ps1 "$tool\public-reshade-controls-stage.ps1" -Force
+          Copy-Item .\install\Public-Startup-Prime-Fix-Stage.ps1 "$tool\public-startup-prime-fix-stage.ps1" -Force
+          Copy-Item .\install\Public-ReShade-UX-Master-Stage.ps1 "$tool\public-reshade-ux-master-stage.ps1" -Force
+          Copy-Item .\install\Public-ReShade-UX-Master-Fixup.ps1 "$tool\public-reshade-ux-master-fixup.ps1" -Force
+          Copy-Item .\install\Public-ReShade-UX-Master-V2-Fixup.ps1 "$tool\public-reshade-ux-master-v2-fixup.ps1" -Force
+          Copy-Item .\install\Public-DLSS-CustomScale-NR-Tuning-Stage.ps1 "$tool\public-dlss-customscale-nr-tuning-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-Proof-Stage.ps1 "$tool\public-fsr-vulkan-proof-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-P2-Standalone-Stage.ps1 "$tool\public-fsr-vulkan-p2-standalone-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-P3-Native-Session-Stage.ps1 "$tool\public-fsr-vulkan-p3-native-session-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-P4A-Exact-Raster-Jitter-Stage.ps1 "$tool\public-fsr-vulkan-p4a-exact-raster-jitter-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-P6-Camera-Calibration-Stage.ps1 "$tool\public-fsr-vulkan-p6-camera-calibration-stage.ps1" -Force
+          Copy-Item .\install\Public-Scaling-Technology-P7-Stage.ps1 "$tool\public-scaling-technology-p7-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-Vulkan-P8-RCAS-Stage.ps1 "$tool\public-fsr-vulkan-p8-rcas-stage.ps1" -Force
+          Copy-Item .\install\Public-Scaling-Technology-P9C-All-Backends-Stage.ps1 "$tool\public-scaling-technology-p9c2-live-nvidia-off-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-P9C1-Jitter-Rearm-Stage.ps1 "$tool\public-fsr-p9c2-jitter-rearm-stage.ps1" -Force
+          Copy-Item .\install\Public-FSR-P9C2-Fixed-Exposure-Stage.ps1 "$tool\public-fsr-p9c2-fixed-exposure-stage.ps1" -Force
+          Copy-Item .\install\Public-NVIDIA-P9C4-Jitter-Sign-Stage.ps1 "$tool\public-nvidia-p9c4-jitter-sign-stage.ps1" -Force
+          Copy-Item .\install\Public-NVIDIA-P9C5-Calibrated-AA-Defaults-Stage.ps1 "$tool\public-nvidia-p9c5-calibrated-aa-defaults-stage.ps1" -Force
+          Copy-Item .\install\Public-GTAIV-Scaling-V122-Stage.ps1 "$tool\public-gtaiv-scaling-v122-stage.ps1" -Force
+          Copy-Item .\install\Public-DLL-Versions-Stage.ps1 "$tool\public-dll-versions-stage.ps1" -Force
+          Copy-Item .\tools\fsr-vulkan\m3k_fsr_backend.h "$tool\m3k_fsr_backend.h" -Force
+
+          $build="$tool\build-a3-s5.ps1"
+          $text=[IO.File]::ReadAllText($build)
+          $anchor="& (Join-Path `$toolRoot 'a3-s5-startup-prime-stage.ps1') -GeneratedRoot `$generated"
+          $replacement=@(
+            $anchor,
+            "& (Join-Path `$toolRoot 'public-reshade-controls-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-startup-prime-fix-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-reshade-ux-master-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-reshade-ux-master-fixup.ps1') -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-reshade-ux-master-v2-fixup.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-dlss-customscale-nr-tuning-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-proof-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-p2-standalone-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-p3-native-session-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-p4a-exact-raster-jitter-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-p6-camera-calibration-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-scaling-technology-p7-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-vulkan-p8-rcas-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-scaling-technology-p9c2-live-nvidia-off-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-p9c2-jitter-rearm-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-fsr-p9c2-fixed-exposure-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-nvidia-p9c4-jitter-sign-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-nvidia-p9c5-calibrated-aa-defaults-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-gtaiv-scaling-v122-stage.ps1') -GeneratedRoot `$generated -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')",
+            "& (Join-Path `$toolRoot 'public-dll-versions-stage.ps1') -FeederSource (Join-Path `$feeder 'src\dlss5-feed.cpp')"
+          ) -join "`r`n"
+          if (($text.Split($anchor).Count - 1) -ne 1) { throw 'Could not attach P9 stage chain exactly once' }
+          [IO.File]::WriteAllText($build,$text.Replace($anchor,$replacement),[Text.UTF8Encoding]::new($false))
+
+      - name: Complete Vulkan SDK headers and import library
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          # The LunarG extraction GitHub action currently installs SDK binaries but omits
+          # the headers and MSVC import library on Windows runners.
+          git clone --depth 1 --branch v1.4.328 https://github.com/KhronosGroup/Vulkan-Headers.git _vulkan-headers
+          if($LASTEXITCODE-ne0){throw 'Vulkan-Headers clone failed'}
+          $inc=Join-Path $env:VULKAN_SDK 'Include'
+          $libdir=Join-Path $env:VULKAN_SDK 'Lib'
+          New-Item -ItemType Directory $inc,$libdir -Force|Out-Null
+          Copy-Item .\_vulkan-headers\include\* $inc -Recurse -Force
+          $def=Join-Path $env:RUNNER_TEMP 'vulkan-1.def'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/KhronosGroup/Vulkan-Loader/main/loader/vulkan-1.def' -OutFile $def
+          & lib.exe "/def:$def" /machine:x64 "/out:$(Join-Path $libdir 'vulkan-1.lib')"
+          if($LASTEXITCODE-ne0){throw 'MSVC Vulkan import library generation failed'}
+          "Vulkan_INCLUDE_DIR=$inc"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_LIBRARY=$(Join-Path $libdir 'vulkan-1.lib')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify Vulkan SDK headers and linker library
+        shell: pwsh
+        run: |
+          Write-Host "VULKAN_SDK=$env:VULKAN_SDK"
+          Get-ChildItem -LiteralPath $env:VULKAN_SDK -Depth 2 | Select-Object FullName
+          $head=Get-ChildItem -LiteralPath $env:VULKAN_SDK -Recurse -File -Filter vulkan.h -ErrorAction SilentlyContinue|Select-Object -First 1
+          $lib=Get-ChildItem -LiteralPath $env:VULKAN_SDK -Recurse -File -Filter vulkan-1.lib -ErrorAction SilentlyContinue|Select-Object -First 1
+          if(-not $head -or -not $lib){throw 'Vulkan SDK extraction did not include headers and import library'}
+          Write-Host "Header=$($head.FullName) Library=$($lib.FullName)"
+      - name: Build pinned FidelityFX FSR 3.1.4 Vulkan
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none --branch v1.1.4 https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git _ffx
+          $sha=(git -C _ffx rev-parse HEAD).Trim()
+          if ($sha -ne 'c6efa6bf7f2027b3ec94f28578bb5965eabb9e55') { throw "Wrong FidelityFX SDK commit: $sha" }
+          cmake -S .\_ffx\sdk -B .\_ffx\sdk\build-gtaiv-fsr -G "Visual Studio 17 2022" -A x64 `
+            -DFFX_API_BACKEND=VK_X64 -DFFX_FSR3UPSCALER=ON -DFFX_AUTO_COMPILE_SHADERS=1 `
+            -DVulkan_INCLUDE_DIR="$env:VULKAN_SDK\Include" -DVulkan_LIBRARY="$env:VULKAN_SDK\Lib\vulkan-1.lib"
+          if ($LASTEXITCODE -ne 0) { throw "FidelityFX configure failed: $LASTEXITCODE" }
+          cmake --build .\_ffx\sdk\build-gtaiv-fsr --config Release --target ffx_fsr3upscaler_x64 ffx_backend_vk_x64 --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw "FidelityFX build failed: $LASTEXITCODE" }
+
+          $libs=Get-ChildItem .\_ffx\sdk\bin\ffx_sdk -File -Filter '*.lib'
+          $fsr=$libs|Where-Object{$_.BaseName -like 'ffx_fsr3upscaler_x64*'}|Select-Object -First 1
+          $vk =$libs|Where-Object{$_.BaseName -like 'ffx_backend_vk_x64*'}|Select-Object -First 1
+          if(-not $fsr -or -not $vk){throw 'FidelityFX libraries missing'}
+          "FFX_INCLUDE=$((Resolve-Path .\_ffx\sdk\include).Path)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFX_FSR_LIB=$($fsr.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFX_VK_LIB=$($vk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "VULKAN_LIB=$env:VULKAN_SDK\Lib\vulkan-1.lib"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Link FidelityFX into frozen Feeder compiler
+        shell: pwsh
+        run: |
+          $compile='.\_project\tools\m3k-nr\compile-s2.bat'
+          $text=[IO.File]::ReadAllText($compile)
+          $inc='/I"%VULKAN%\include"'
+          if(($text.Split($inc).Count-1)-ne 1){throw 'Vulkan include anchor not unique'}
+          $text=$text.Replace($inc,$inc+' /I"%FFX_INCLUDE%"')
+          $link='"%NGX%\lib\Windows_x86_64\x64\nvsdk_ngx_d.lib" version.lib'
+          if(($text.Split($link).Count-1)-ne 1){throw 'Feeder link anchor not unique'}
+          $text=$text.Replace($link,'"%NGX%\lib\Windows_x86_64\x64\nvsdk_ngx_d.lib" "%FFX_FSR_LIB%" "%FFX_VK_LIB%" "%VULKAN_LIB%" version.lib')
+          [IO.File]::WriteAllText($compile,$text,[Text.UTF8Encoding]::new($false))
+
+      - name: Build GTA IV Scaling v1.2.6 feeder
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\_project\tools\m3k-nr\build-a3-s5.ps1
+          if($LASTEXITCODE-ne 0){throw "P9 Feeder build failed: $LASTEXITCODE"}
+          $addon='.\_project\tools\m3k-nr\out-m3k-a3-s5\dlss5-feed.addon64'
+          if(-not(Test-Path $addon)){throw 'P9C5 addon missing'}
+          New-Item -ItemType Directory .\out-fsr-p9c5 -Force|Out-Null
+          Copy-Item $addon .\out-fsr-p9c5\dlss5-feed-fsr-p9c5.addon64 -Force
+
+          $ascii=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($addon))
+          foreach($marker in @(
+            'M3K-P9C: COMMIT begin',
+            'M3K-P9C: LIVE switch COMMITTED',
+            'M3K-P9C: ROLLBACK COMMITTED',
+            'M3K-P9C: ROLLBACK FAILED',
+            'M3K-P9C: Off backend READY - true native/raw passthrough',
+            'M3K-P9C: SRProof=%u for target %s',
+            'M3K-P9C: NVIDIA session READY',
+            'M3K-P9C: LIVE switch FINALIZED',
+            'draining through native/raw midpoint',
+            'M3K-P9C: NVIDIA reconstruction finalizer BLOCKED for pending target %s',
+            'M3K-P9C: live vendor switch requested %s -> %s; serializing through explicit Off/raw midpoint',
+            'M3K-P9C: VENDOR MIDPOINT COMMITTED %s -> Off/raw; continuing Off -> %s on the next frame',
+            'M3K-P9C: AMD native Vulkan session READY after %s; waiting for first successful FSR dispatch',
+            'M3K-P9C: LIVE switch FINALIZED %s -> AMD - FSR; reconstruction READY',
+            'M3K-P9C1: AMD jitter bridge inactive age=',
+            'M3K-P9C1: AMD jitter bridge RECOVERED',
+            'M3K-P9C1: bridge snapshot valid=',
+            'M3K-FSR-P9C2: FSR 3.1.4 Vulkan context READY max=%ux%u depthInverted=%d RCAS=per-dispatch autoExposure=OFF(default exposure)',
+            'M3K-P9C4: NVIDIA jitter compensation changed live -> %s (mode=%u); full raster jitter retained',
+            'M3K-P9C5: calibrated NVIDIA temporal defaults = 8 phases, -X/-Y; AMD keeps independent FSR phase planning',
+            'GTA IV Scaling 1.2.6',
+            'NVIDIA RTX capability: %s',
+            'AMD FidelityFX FSR',
+            'RCAS=per-dispatch',
+            'AMD RCAS Sharpening',
+            'NATIVE VULKAN SESSION READY; D3D12 NOT CREATED; NGX NOT INITIALIZED'
+          )){if(-not $ascii.Contains($marker)){throw "P9C5 feeder marker missing: $marker"}}
+
+          $hash=(Get-FileHash -Algorithm SHA256 $addon).Hash.ToUpperInvariant()
+          @(
+            'P9C.5 calibrated NVIDIA AA defaults candidate',
+            'Baseline=P9C.4 hardware calibration passed; this checkpoint promotes NVIDIA 8 phases + -X/-Y as defaults while preserving live Advanced controls',
+            'AMD FSR remains unchanged and keeps independent phase planning; NVIDIA starts at 8 phases + -X/-Y; bridge DLL remains unchanged',
+            'Initial backend=Off / raw native / sessionless',
+            'Live boundaries enabled=Off <-> NVIDIA and Off <-> AMD; direct vendor hops serialize through Off/raw',
+            'AMD live boundary enabled; NVIDIA and AMD state remain independent',
+            'NVIDIA -> Off path=target remains Off throughout drain; one-shot BLOCKED marker proves SR-ready finalizer ignored Off -> 30 stable native frames -> jitter off -> 400ms drain -> queue-idle ShutdownSession',
+            'Off -> NVIDIA path=select NVIDIA -> SRProof=1 -> InitSessionVk -> build requested SR/DLAA -> finalize only after reconstruction READY',
+            'Failed NVIDIA open=explicit rollback to Off/raw; no AMD fallback',
+            'Session backend latch prevents mutable INI from switching backend early',
+            'd3d9.dll and NvRemixBridge.exe remain untouched',
+            "FeederSHA256=$hash"
+          )|Set-Content .\out-fsr-p9c5\TEST-NOTES.txt -Encoding UTF8
+
+          Copy-Item .\install\p9c5\FSR-P9C5-Apply.ps1 .\out-fsr-p9c5\FSR-P9C5-Apply.ps1 -Force
+          Copy-Item .\install\p9c5\FSR-P9C5-Restore.ps1 .\out-fsr-p9c5\FSR-P9C5-Restore.ps1 -Force
+          Copy-Item .\install\p9c5\1-APPLY-P9C5-CALIBRATED-AA-DEFAULTS.bat .\out-fsr-p9c5\1-APPLY-P9C5-CALIBRATED-AA-DEFAULTS.bat -Force
+          Copy-Item .\install\p9c5\2-RESTORE-BEFORE-P9C5.bat .\out-fsr-p9c5\2-RESTORE-BEFORE-P9C5.bat -Force
+          Copy-Item .\_project\tools\m3k-nr\_work\m3k-src-a3-s5\m3k_vk.h .\out-fsr-p9c5\generated-m3k_vk.h -Force -ErrorAction SilentlyContinue
+          Copy-Item .\_project\tools\m3k-nr\_work\feeder\src\dlss5-feed.cpp .\out-fsr-p9c5\generated-dlss5-feed.cpp -Force -ErrorAction SilentlyContinue
+
+          @(
+            'P9C.5 CALIBRATED NVIDIA AA DEFAULTS SMOKE TEST',
+            '',
+            'P9C.4 hardware result promoted: NVIDIA default = 8 phases + -X/-Y. AMD FSR is unchanged.',
+            '',
+            '1. Run 1-APPLY-P9C5-CALIBRATED-AA-DEFAULTS.bat.',
+            '2. Launch GTA IV and switch Off -> NVIDIA.',
+            '3. Open Advanced -> Temporal AA. WITHOUT changing anything, confirm Jitter Sequence = 8 phases and NVIDIA Jitter Compensation = -X / -Y.',
+            '4. Test Quality for ~10 seconds. AA/shimmer should match the winning P9C.4 result.',
+            '5. Test DLAA Native briefly. It should remain clean.',
+            '6. Switch NVIDIA -> AMD 66.7%. FSR should remain unchanged/clean and use its independent temporal phase planning.',
+            '7. Close GTA IV, run 2-RESTORE-BEFORE-P9C5.bat, and send FSR-P9C5-TEST-LOG.txt only if anything differs from P9C.4.',
+            '',
+            'PASS: calibrated NVIDIA settings are already selected at startup; Quality + DLAA remain good; AMD remains unchanged.'
+          )|Set-Content .\out-fsr-p9c5\HOW-TO-TEST.txt -Encoding UTF8
+
+      - name: Assemble v1.2.6 runtime payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path .\_v110 -Force | Out-Null
+          gh release download v1.1.0 --repo JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR --pattern 'GTAIV-DLSS-Full-Runtime.zip' --pattern 'ReShade64-bbridge.dll' --dir .\_v110 --clobber
+          if($LASTEXITCODE-ne 0){throw "v1.1.0 base payload download failed: $LASTEXITCODE"}
+
+          Expand-Archive -LiteralPath .\_v110\GTAIV-DLSS-Full-Runtime.zip -DestinationPath .\_runtime122 -Force
+          $candidate='.\_project\tools\m3k-nr\out-m3k-a3-s5\dlss5-feed.addon64'
+          if(-not(Test-Path $candidate)){throw 'v1.2.6 feeder candidate missing'}
+          Copy-Item $candidate .\_runtime122\dlss5-feed.addon64 -Force
+          # Keep the v1.2.3 non-16:9 mode discovery fix.
+          $cfg='.\_runtime122\dxvk.conf'
+          $original=[IO.File]::ReadAllText($cfg)
+          $fixed=[regex]::Replace($original,'(?im)^[ \t]*d3d9\.forceAspectRatio[ \t]*=[^\r\n]*(?:\r?\n|$)','')
+          if($fixed-ne$original){[IO.File]::WriteAllText($cfg,$fixed,[Text.UTF8Encoding]::new($false))}
+
+          'GTA IV Scaling runtime 1.2.2' | Set-Content .\_runtime122\GTAIV-SCALING-VERSION.txt -Encoding UTF8
+          Get-ChildItem .\_runtime122 -Recurse -File | Where-Object {$_.Name -ne 'SHA256SUMS.txt'} | ForEach-Object {
+            $h=Get-FileHash -Algorithm SHA256 $_.FullName
+            '{0}  {1}' -f $h.Hash,$_.FullName.Substring((Resolve-Path .\_runtime122).Path.Length+1)
+          } | Set-Content .\_runtime122\SHA256SUMS.txt -Encoding ASCII
+
+          New-Item -ItemType Directory -Path .\installer\payload -Force | Out-Null
+          Compress-Archive -Path .\_runtime122\* -DestinationPath .\installer\payload\GTAIV-Scaling-Runtime-v1.2.6.zip -CompressionLevel Optimal -Force
+          Copy-Item .\_v110\ReShade64-bbridge.dll .\installer\payload\ReShade64-bbridge.dll -Force
+
+          $runtimeHash=(Get-FileHash -Algorithm SHA256 .\installer\payload\GTAIV-Scaling-Runtime-v1.2.6.zip).Hash.ToUpperInvariant()
+          $feederHash=(Get-FileHash -Algorithm SHA256 .\_runtime122\dlss5-feed.addon64).Hash.ToUpperInvariant()
+          $patchHash=(Get-FileHash -Algorithm SHA256 .\installer\payload\ReShade64-bbridge.dll).Hash.ToUpperInvariant()
+          if($patchHash-ne'D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510'){throw "Unexpected ReShade patch hash: $patchHash"}
+
+          "SCALING_RUNTIME_HASH=$runtimeHash" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCALING_FEEDER_HASH=$feederHash" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $runtimeHash | Set-Content .\installer\payload\GTAIV-Scaling-Runtime-v1.2.6.sha256 -Encoding ASCII
+          $feederHash | Set-Content .\installer\payload\dlss5-feed-v1.2.6.sha256 -Encoding ASCII
+
+      - name: Prepare v1.2.6 foundation and action scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $oldRuntime='A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3'
+          $oldFeeder='B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27'
+
+          $core=[IO.File]::ReadAllText('.\install\core\Install-DLAA-Core.bat')
+          if(-not $core.Contains($oldRuntime)){throw 'Foundation runtime hash anchor missing'}
+          if(-not $core.Contains($oldFeeder)){throw 'Foundation feeder hash anchor missing'}
+          $core=$core.Replace($oldRuntime,$env:SCALING_RUNTIME_HASH).Replace($oldFeeder,$env:SCALING_FEEDER_HASH)
+          $core=$core.Replace('GTAIV-DLSS-Setup.exe','GTAIV-Scaling-Setup-v1.2.6.exe')
+          # Regenerate EVERY per-file SHA256 from this exact v1.2.6 archive, not legacy v1.1.0.
+          $block=[regex]::Match($core,'(?s)\$RuntimeHashes=@\{(.*?)\}')
+          if(-not $block.Success){throw 'Foundation hash table missing'}
+          $pattern="(?m)^[ \t]*'([^']+)'[ \t]*=[ \t]*'([0-9A-Fa-f]{64})'[ \t]*;?[ \t]*\r?$"
+          $matches=[regex]::Matches($block.Groups[1].Value,$pattern)
+          if($matches.Count-lt10){throw 'Foundation hash table incomplete'}
+          foreach($row in $matches){
+            $file=Join-Path '.\_runtime122' $row.Groups[1].Value
+            if(-not(Test-Path -LiteralPath $file)){throw "Runtime file missing $file"}
+            $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToUpperInvariant()
+            $core=$core.Replace($row.Value,$row.Value.Replace($row.Groups[2].Value,$hash))
+          }
+          $test=[regex]::Matches(([regex]::Match($core,'(?s)\$RuntimeHashes=@\{(.*?)\}')).Groups[1].Value,$pattern)
+          foreach($row in $test){
+            $actual=(Get-FileHash -LiteralPath (Join-Path '.\_runtime122' $row.Groups[1].Value) -Algorithm SHA256).Hash.ToUpperInvariant()
+            if($row.Groups[2].Value.ToUpperInvariant()-ne$actual){throw "Runtime hash mismatch: $($row.Groups[1].Value)"}
+          }
+          Write-Host "All $($test.Count) internal runtime SHA256 values verified"
+          [IO.File]::WriteAllText('.\installer\payload\Install-DLAA-Core-v1.2.6.bat',$core,[Text.UTF8Encoding]::new($false))
+
+          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action-v126.ps1')
+          if(-not $runner.Contains('__SCALING_RUNTIME_SHA256__')){throw 'Runtime hash token missing'}
+          if(-not $runner.Contains('__SCALING_FEEDER_SHA256__')){throw 'Feeder hash token missing'}
+          $runner=$runner.Replace('__SCALING_RUNTIME_SHA256__',$env:SCALING_RUNTIME_HASH).Replace('__SCALING_FEEDER_SHA256__',$env:SCALING_FEEDER_HASH)
+          [IO.File]::WriteAllText('.\installer\payload\Run-Scaling-Action.ps1',$runner,[Text.UTF8Encoding]::new($false))
+
+          [void][ScriptBlock]::Create($runner)
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR.ps1'))
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Install-Latest-FusionFix.ps1'))
+          foreach($bat in @('.\install\Install-DLAA.bat','.\installer\payload\Install-DLAA-Core-v1.2.6.bat','.\install\Uninstall-DLAA.bat')){
+            $text=[IO.File]::ReadAllText($bat);$marker='#==POWERSHELL==#';$i=$text.IndexOf($marker)
+            if($i-ge 0){[void][ScriptBlock]::Create($text.Substring($i+$marker.Length))}
+          }
+
+      - name: Validate FusionFix CFG lookup hotfix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $bat=[IO.File]::ReadAllText('.\install\core\Install-DLAA-Core.bat')
+          $m='#==POWERSHELL==#';$i=$bat.IndexOf($m)
+          if($i-lt0){throw 'Install-DLAA-Core.bat PowerShell marker missing'}
+          [void][ScriptBlock]::Create($bat.Substring($i+$m.Length))
+          foreach($required in @(
+            'plugins\$cfgName',
+            'Rockstar Games\GTA IV\$cfgName',
+            'GTAIV.EFLC.FusionFix\$cfgName',
+            "GetFolderPath('MyDocuments')",
+            'supported first-run location'
+          )){if(-not $bat.Contains($required)){throw "FusionFix lookup marker missing: $required"}}
+      - name: Validate NR update option and uninstall modes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runner=[IO.File]::ReadAllText('.\installer\Run-Scaling-Action-v126.ps1')
+          [void][ScriptBlock]::Create($runner)
+          foreach($marker in @(
+            "ValidateSet('INSTALL','UPDATE_NR','UPDATE_FUSIONFIX','REMOVE_KEEP_FUSIONFIX','REMOVE_ALL')",
+            'function Remove-ScalingLeftovers',
+            'function Remove-FusionFix',
+            "'_GTAIV_SCALING_PRE*_BACKUP_*'",
+            'REMOVE_KEEP_FUSIONFIX',
+            'UPDATE_NR',
+            'UPDATE_FUSIONFIX',
+            'function Invoke-LatestFusionFix'
+            'Remove-Scaling $Game $false'
+          )){if(-not $runner.Contains($marker)){throw "Uninstall runner marker missing: $marker"}}
+
+          $iss=[IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup.iss')
+          foreach($marker in @(
+            'Remove GTA IV Scaling, keep FusionFix',
+            'Update Neural Rendering DLL only',
+            'Completely remove GTA IV Scaling and FusionFix',
+            "ActionName := 'REMOVE_KEEP_FUSIONFIX'",
+            "ActionName := 'REMOVE_ALL'",
+            "ActionName := 'UPDATE_NR'",
+            "ActionName := 'UPDATE_FUSIONFIX'",
+            'Install / Update latest FusionFix ONLY'
+          )){if(-not $iss.Contains($marker)){throw "Installer uninstall-choice marker missing: $marker"}}
+
+          $bat=[IO.File]::ReadAllText('.\install\Uninstall-DLAA.bat')
+          $m='#==POWERSHELL==#';$i=$bat.IndexOf($m)
+          if($i-lt0){throw 'Uninstall-DLAA.bat PowerShell marker missing'}
+          [void][ScriptBlock]::Create($bat.Substring($i+$m.Length))
+          if(-not $bat.Contains("'_GTAIV_SCALING_PRE*_BACKUP_*'")){throw 'Scaling backup cleanup marker missing'}
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile GTA IV Scaling 1.2.2 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if(-not(Test-Path $iscc)){throw 'ISCC.exe not found'}
+          & $iscc .\installer\GTAIV-Scaling-Setup.iss
+          if($LASTEXITCODE-ne 0){throw "Inno Setup compile failed: $LASTEXITCODE"}
+          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.6.exe'
+          if(-not(Test-Path $exe)){throw 'Compiled GTA IV Scaling installer missing'}
+          $hash=(Get-FileHash -Algorithm SHA256 $exe).Hash.ToUpperInvariant()
+          $hash | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.6.sha256 -Encoding ASCII
+          @(
+            'GTA IV Scaling v1.2.6 release-prep candidate',
+            "InstallerSHA256=$hash",
+            "RuntimeSHA256=$env:SCALING_RUNTIME_HASH",
+            "FeederSHA256=$env:SCALING_FEEDER_HASH",
+            'Product name=GTA IV Scaling',
+            'RTX UI=Off — Native / NVIDIA DLAA-DLSS / AMD FidelityFX FSR',
+            'Non-RTX UI=Off — Native / AMD FidelityFX FSR',
+            'Internal dlss5-feed filenames/symbols intentionally retained',
+            'NVIDIA default temporal calibration=8 phases + -X/-Y',
+            'AMD FSR exposure=fixed/default, independent phase planning'
+          ) | Set-Content .\installer\out\RELEASE-PREP-v1.2.6.txt -Encoding UTF8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-Scaling-v1.2.6-release-prep
+          path: |
+            installer/out/GTAIV-Scaling-Setup-v1.2.6.exe
+            installer/out/GTAIV-Scaling-Setup-v1.2.6.sha256
+            installer/out/RELEASE-PREP-v1.2.6.txt
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.6.sha256
+            installer/payload/dlss5-feed-v1.2.6.sha256
+            installer/payload/ReShade64-bbridge.dll
+            out-fsr-p9c5/generated-m3k_vk.h
+            out-fsr-p9c5/generated-dlss5-feed.cpp
+          if-no-files-found: error
