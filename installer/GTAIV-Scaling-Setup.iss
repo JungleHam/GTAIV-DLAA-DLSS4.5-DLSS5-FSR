@@ -372,7 +372,7 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpFinished then begin
     if FusionFixInstalledThisRun then begin
-      WizardForm.FinishedLabel.Caption := 'FusionFix 5.0.1 was installed. Launch GTA IV once to the main menu, close it, then run GTA IV Scaling Setup 1.2.6 again.';
+      WizardForm.FinishedLabel.Caption := 'Latest stable FusionFix was installed. Launch GTA IV once to the main menu, close it, then run GTA IV Scaling Setup 1.2.6 again.';
       exit;
     end;
 
