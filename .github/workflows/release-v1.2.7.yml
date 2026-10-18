@@ -1,0 +1,124 @@
+name: GTA IV Scaling v1.2.7 validated bridge release
+on:
+  push:
+    branches: [release/v1.2.7-working-bridge-pin]
+    paths: ['.github/workflows/release-v1.2.7.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-validate-publish:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out source at the pinned release commit
+        uses: actions/checkout@v4
+
+      - name: Download successfully tested v1.2.6 runtime source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_base' -Force | Out-Null
+          gh run download 39115183838 --repo "$env:GITHUB_REPOSITORY" -n 'GTAIV-Scaling-v1.2.6-release-prep' -D '_base'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve approved v1.2.6 source artifacts'}
+          if (-not (Test-Path '_base/installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip')) {throw 'Missing original runtime'}
+
+      - name: Download exact hardware-tested 32-bit bridge client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_diagnostic' -Force | Out-Null
+          gh run download 39128635228 --repo "$env:GITHUB_REPOSITORY" -n 'gtaiv-bridge-selective-mask-client' -D '_diagnostic'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve validated diagnostic client'}
+          $expected='B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF'
+          $actual=(Get-FileHash '_diagnostic/d3d9.dll' -Algorithm SHA256).Hash
+          if ($actual -ne $expected) {throw "Wrong b-bridge client $actual"}
+          Write-Host "Pinned client verified $actual"
+
+      - name: Generate v1.2.7 package and install-time checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tools/release-pin-v127.py --base _base --client _diagnostic/d3d9.dll
+          if ($LASTEXITCODE -ne 0) {throw "v1.2.7 package generator failed ($LASTEXITCODE)"}
+
+      - name: Validate complete installer scripts, runtime and regression checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runner=[IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action.ps1')
+          [void][ScriptBlock]::Create($runner)
+          if (-not $runner.Contains('Repair-V126BridgePin')) {throw 'Bridge-only upgrade not deployed'}
+          if ($runner.Contains('if(Repair-V122AspectRatio $Root){Upgrade-AddonUi')) {throw 'Old config-only skip still active'}
+          $bat=[IO.File]::ReadAllText('.\installer\payload\Install-DLAA-Core-v1.2.7.bat')
+          $i=$bat.IndexOf('#==POWERSHELL==#')
+          if ($i -lt 0) {throw 'Foundation PowerShell marker missing'}
+          [void][ScriptBlock]::Create($bat.Substring($i+16))
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR.ps1'))
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Install-Latest-FusionFix.ps1'))
+          $archive='.\installer\payload\GTAIV-Scaling-Runtime-v1.2.7.zip'
+          $record=([IO.File]::ReadAllText('.\installer\payload\GTAIV-Scaling-Runtime-v1.2.7.sha256')).Trim()
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $record) {throw 'Runtime integrity mismatch'}
+          $dll=(Get-FileHash '_runtime127/d3d9.dll' -Algorithm SHA256).Hash
+          if ($dll -ne 'B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF') {throw 'Client mismatch'}
+          $cfg=[IO.File]::ReadAllText('_runtime127/bridge.conf')
+          foreach($required in @('eliminateRedundantSetterCalls = True','clientStateBatch = True','clientRedundantBypassMask = 1032192')) {
+            if (-not $cfg.Contains($required)) {throw "Bridge pin missing: $required"}
+          }
+          if (-not ([IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup.iss')).Contains('1.2.7')) {throw 'Wrong installer version'}
+          Write-Host 'All package, checksum, PowerShell syntax, and pin regression checks passed'
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup dependency unavailable'}
+
+      - name: Compile v1.2.7 complete Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $compiler=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {throw 'ISCC missing'}
+          & $compiler .\installer\GTAIV-Scaling-Setup.iss
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup compilation failed'}
+          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.7.exe'
+          if (-not (Test-Path $exe)) {throw 'v1.2.7 installer EXE missing'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash
+          $sha | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.7.sha256 -Encoding ASCII
+          Write-Host "Installer SHA256: $sha"
+
+      - name: Publish build artifacts for audit and download
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-Scaling-v1.2.7-pinned-release
+          path: |
+            installer/out/GTAIV-Scaling-Setup-v1.2.7.exe
+            installer/out/GTAIV-Scaling-Setup-v1.2.7.sha256
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.7.zip
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.7.sha256
+            installer/payload/dlss5-feed-v1.2.7.sha256
+            RELEASE-v1.2.7.md
+          retention-days: 90
+
+      - name: Publish public GitHub release after all checks succeed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          gh release view v1.2.7 --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -eq 0) {throw 'v1.2.7 tag already exists; refusing to overwrite'}
+          $files=@(
+            '.\installer\out\GTAIV-Scaling-Setup-v1.2.7.exe',
+            '.\installer\out\GTAIV-Scaling-Setup-v1.2.7.sha256',
+            '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.7.zip',
+            '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.7.sha256',
+            '.\installer\payload\dlss5-feed-v1.2.7.sha256'
+          )
+          gh release create v1.2.7 @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title 'GTA IV Scaling v1.2.7 - loading screens and shadows fix' --notes-file '.\RELEASE-v1.2.7.md' --latest
+          if ($LASTEXITCODE -ne 0) {throw 'Release publication failed'}
+          Write-Host 'Published verified v1.2.7 release assets'
