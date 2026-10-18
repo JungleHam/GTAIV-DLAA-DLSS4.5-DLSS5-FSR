@@ -69,7 +69,7 @@ jobs:
           [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1'))
           $nr=[IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1')
           $fast=$nr.IndexOf('if(-not $LocalPackage -and (Test-Path')
-          $fetch=$nr.IndexOf('Invoke-WebRequest -Uri $url')
+          $fetch=$nr.IndexOf('Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $file')
           if($fast -lt 0 -or $fetch -lt 0 -or $fast -ge $fetch){throw 'NR already-current check must precede package fetch'}
           $iss=[IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup-v128.iss')
           foreach($token in @('Automatic (download only if needed)','Use my local DLL / ZIP / RAR','Skip NR (preserve existing DLL)',' -NrMode local -NrPackage ',' -NrMode skip')){
