@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('INSTALL','REMOVE_KEEP_FUSIONFIX','REMOVE_ALL')]
+    [ValidateSet('INSTALL','UPDATE_NR','REMOVE_KEEP_FUSIONFIX','REMOVE_ALL')]
     [string]$Action,
 
     [Parameter(Mandatory=$true)]
@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-$Version='1.2.4'
+$Version='1.2.5'
 $RuntimeHash='__SCALING_RUNTIME_SHA256__'
 $FeederHash='__SCALING_FEEDER_SHA256__'
 $ReShadePatchHash='D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510'
@@ -64,7 +64,7 @@ function Download-GitHubReleaseAsset([string]$Repo,[string]$Tag,[string]$Asset,[
 }
 function Get-AutoTemp{
     if(-not $script:Temp){
-        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_124_'+[Guid]::NewGuid().ToString('N'))
+        $script:Temp=Join-Path $env:TEMP ('GTAIV_SCALING_125_'+[Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:Temp -Force|Out-Null
     }
     return $script:Temp
@@ -216,7 +216,300 @@ function Repair-V122AspectRatio([string]$Root){
        -not(Test-Foundation $Root) -or
        -not(Test-Path -LiteralPath (Join-Path $Root '.trex\m3k-nr.ini'))){return $false}
     $before=[IO.File]::ReadAllText($receipt)
-    if($before-notmatch '(?m)^Version=1\.2\.[23]\r?$'){return $false}
+    if($before-notmatch '(?m)^Version=1\.2\.[234]\r?
+    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE123_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
+    New-Item -ItemType Directory -Path $backup -Force|Out-Null
+    Copy-Item -LiteralPath $receipt -Destination (Join-Path $backup 'GTAIV_SCALING_INSTALLED.txt') -Force
+    Copy-Item -LiteralPath $config -Destination (Join-Path $backup 'dxvk.conf') -Force
+    Remove-DxvkForcedAspectRatio $config
+    $after=[regex]::Replace($before,'(?m)^Version=1\.2\.[234](?=\r?$)','Version=1.2.5')
+    if($after-eq$before){Fail 'Cannot update legacy receipt after DXVK repair.'}
+    $after=$after.TrimEnd([char]13,[char]10)+[Environment]::NewLine+
+           'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine+
+           "Pre125Backup=$backup"+[Environment]::NewLine
+    [IO.File]::WriteAllText($receipt,$after,[Text.UTF8Encoding]::new($false))
+    Write-Host 'GTA IV Scaling -> 1.2.5 configuration-only upgrade complete.' -ForegroundColor Green
+    Write-Host 'Existing DLAA/DLSS/FSR files and scaling settings were preserved.' -ForegroundColor Green
+    return $true
+}
+
+function Ensure-Technique([string]$Path,[string]$Technique){
+    if(-not(Test-Path -LiteralPath $Path)){return}
+    $text=[IO.File]::ReadAllText($Path)
+    foreach($key in @('Techniques','TechniqueSorting')){
+        $pat='(?m)^'+[regex]::Escape($key)+'=(.*)$';$m=[regex]::Match($text,$pat)
+        if($m.Success){
+            $items=@($m.Groups[1].Value.Split(',')|ForEach-Object{$_.Trim()}|Where-Object{$_})
+            if($items -notcontains $Technique){$items+= $Technique}
+            $line=$key+'='+($items -join ',')
+            $text=$text.Substring(0,$m.Index)+$line+$text.Substring($m.Index+$m.Length)
+        }
+    }
+    [IO.File]::WriteAllText($Path,$text,[Text.UTF8Encoding]::new($false))
+}
+function Resolve-NrDll([object]$Gpu,[string]$OwnPath){
+    if($Gpu.Series -notin @(20,30,40,50)){return $null}
+    if($OwnPath){
+        $dll=(Resolve-Path -LiteralPath $OwnPath).Path
+    }else{
+        if($Gpu.Series-in@(20,30)){$tag='dlssnr-310.8.SF-v2';$asset='nvngx_dlssnr_310.8.SF-v2.zip';$expectedZip=$NrSfZipHash}
+        elseif($Gpu.Series-eq40){$tag='dlssnr-310.8.0-RTX40';$asset='nvngx_dlssnr_310.8.0-RTX40.zip';$expectedZip=$Nr40ZipHash}
+        else{$tag='dlssnr-310.8.0';$asset='nvngx_dlssnr_310.8.0.zip';$expectedZip=$Nr50ZipHash}
+        $zip=Join-Path (Get-AutoTemp) $asset
+        Download-GitHubReleaseAsset 'RankFTW/rhi-repo' $tag $asset $zip 'DLSS Neural Rendering'
+        Assert-SHA256 $zip $expectedZip 'Neural Rendering ZIP'
+        $out=Join-Path (Get-AutoTemp) 'nr'
+        Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+        $found=@(Get-ChildItem -LiteralPath $out -Recurse -File -Filter 'nvngx_dlssnr.dll')
+        if($found.Count-ne1){Fail "Expected one nvngx_dlssnr.dll, found $($found.Count)."}
+        $dll=$found[0].FullName
+    }
+    $expected=if($Gpu.Series-in@(20,30)){$NrSfDllHash}elseif($Gpu.Series-eq40){$Nr40DllHash}else{$Nr50DllHash}
+    Assert-SHA256 $dll $expected 'Neural Rendering DLL'
+    if($Gpu.Series-eq50){
+        $sig=Get-AuthenticodeSignature -LiteralPath $dll
+        if($sig.Status-ne'Valid'-or$sig.SignerCertificate.Subject-notmatch'NVIDIA'){Fail 'RTX 50 Neural Rendering DLL signature is invalid.'}
+    }
+    return $dll
+}
+function Backup-ScalingFiles([string]$Root){
+    $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
+    $dest=Join-Path $Root ("_GTAIV_SCALING_PRE123_BACKUP_"+$stamp)
+    New-Item -ItemType Directory -Path $dest -Force|Out-Null
+    foreach($rel in @('d3d9.dll','dxvk.conf','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
+        $src=Join-Path $Root $rel
+        if(Test-Path -LiteralPath $src){
+            $dst=Join-Path $dest $rel;$parent=Split-Path -Parent $dst
+            if($parent){New-Item -ItemType Directory -Path $parent -Force|Out-Null}
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+        }
+    }
+    return $dest
+}
+function Invoke-NrUpdate([string]$Root,[string]$Local){
+    $updater=Join-Path $PSScriptRoot 'Update-NR.ps1'
+    if(-not(Test-Path -LiteralPath $updater)){Fail 'NR updater component missing from the setup.'}
+    $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-Game',$Root)
+    if($ResultFile){$args+=@('-ResultFile',$ResultFile)}
+    if($Local){$args+=@('-LocalPackage',$Local)}
+    & powershell.exe @args
+    if($LASTEXITCODE-ne0){Fail 'Verified NR updater failed; existing NR is preserved. See setup log.'}
+}
+
+function Install-Scaling([string]$Root){
+    Assert-SHA256 $RuntimePackage $RuntimeHash 'GTA IV Scaling runtime'
+    Assert-SHA256 $ReShadePatch $ReShadePatchHash 'ReShade input patch'
+    $gpu=Get-GpuInfo
+    Write-Host "Detected GPU: $($gpu.Name)" -ForegroundColor Cyan
+    if($gpu.IsRtx){Write-Host 'Runtime capability: NVIDIA DLAA/DLSS + AMD FidelityFX FSR' -ForegroundColor Green}
+    else{Write-Host 'Runtime capability: AMD FidelityFX FSR (NVIDIA option hidden)' -ForegroundColor Green}
+
+    if(-not(Test-Path -LiteralPath (Join-Path $Root 'dinput8.dll'))){
+        Install-FusionFix $Root
+        Write-Result 'FusionFix 5.0.1 was installed. Launch GTA IV once to the main menu, close it, then run GTA IV Scaling setup again.'
+        exit 20
+    }
+    if(-not(Test-FusionFixFirstRun $Root)){Fail 'FusionFix is installed but has not completed its first run. Launch GTA IV once to the main menu, close it, then rerun setup.'}
+    if(Get-Process GTAIV -ErrorAction SilentlyContinue){Fail 'Close GTA IV before installing.'}
+    if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}
+
+    if(Repair-V122AspectRatio $Root){Invoke-NrUpdate $Root $NrPackage;return}
+
+    if(-not(Test-Foundation $Root)){
+        if(-not $ReShadeSetup -or -not(Test-Path -LiteralPath $ReShadeSetup -PathType Leaf)){Fail 'Select the official ReShade 6.8.0 Full Add-On installer.'}
+        $lum=Resolve-LumenitePackage
+        $env:GTAIV_SETUP_RESHADE=(Resolve-Path -LiteralPath $ReShadeSetup).Path
+        $env:GTAIV_SETUP_LUMENITE=$lum
+        $env:GTAIV_SETUP_PROJECT_RUNTIME=(Resolve-Path -LiteralPath $RuntimePackage).Path
+        $env:GTAIV_SETUP_RESHADE_PATCH=(Resolve-Path -LiteralPath $ReShadePatch).Path
+        if($ResultFile){$env:GTAIV_SETUP_RESULT_FILE=$ResultFile}
+        $foundation=Join-Path $PSScriptRoot 'Install-DLAA.bat'
+        Invoke-Bat $foundation $Root -NonInteractive
+    }
+
+    $backup=Backup-ScalingFiles $Root
+    $trex=Join-Path $Root '.trex'
+    $runtimeDir=Join-Path (Get-AutoTemp) 'runtime'
+    Expand-Archive -LiteralPath $RuntimePackage -DestinationPath $runtimeDir -Force
+    Assert-SHA256 (Join-Path $runtimeDir 'dlss5-feed.addon64') $FeederHash 'GTA IV Scaling feeder'
+
+    New-Item -ItemType Directory -Path $trex -Force|Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $trex 'm3k') -Force|Out-Null
+    $shaderDir=Join-Path $trex 'reshade-shaders\Shaders'
+    New-Item -ItemType Directory -Path $shaderDir -Force|Out-Null
+
+    Copy-Item (Join-Path $runtimeDir 'd3d9.dll') (Join-Path $Root 'd3d9.dll') -Force
+    foreach($name in @('NvRemixBridge.exe','d3d9vk_x64.dll','bridge.conf','dlss5-feed.addon64','nvngx_dlss.dll')){
+        Copy-Item (Join-Path $runtimeDir $name) (Join-Path $trex $name) -Force
+    }
+    Copy-Item (Join-Path $runtimeDir 'dxvk.conf') (Join-Path $Root 'dxvk.conf') -Force
+    Copy-Item (Join-Path $runtimeDir 'm3k\m3k-nvngx.dll') (Join-Path $trex 'm3k\m3k-nvngx.dll') -Force
+    foreach($name in @('DLSS5_Feed.fx','M3K_Sharpen.fx','ReShade.fxh','ReShadeUI.fxh','DrawText.fxh')){
+        Copy-Item (Join-Path $runtimeDir $name) (Join-Path $shaderDir $name) -Force
+    }
+    Set-KeyEquals (Join-Path $Root 'dxvk.conf') 'd3d9.samplerLodBias' '0.0'
+    Remove-DxvkForcedAspectRatio (Join-Path $Root 'dxvk.conf')
+    Set-KeyEquals (Join-Path $trex 'bridge.conf') 'clientFrameCap' '0'
+    Set-KeyEquals (Join-Path $trex 'bridge.conf') 'client.DirectInput.forward.mousePolicy' '3'
+    Set-KeyEquals (Join-Path $trex 'bridge.conf') 'client.DirectInput.forward.keyboardPolicy' '3'
+    Set-KeyEquals (Join-Path $trex 'dlss5-feed.cfg') 'enabled' '1'
+    Set-KeyEquals (Join-Path $trex 'dlss5-feed.cfg') 'mode' '2'
+    Set-KeyEquals (Join-Path $trex 'dlss5-feed.cfg') 'work_resolution' '100'
+    Ensure-Technique (Join-Path $trex 'ReShadePreset.ini') 'M3K_Sharpen@M3K_Sharpen.fx'
+
+    $nrDest=Join-Path $trex 'm3k\nvngx_dlssnr.dll'
+    $latestHashes=@(
+        'CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED',
+        '2BC19BC09A7B89DD44F73E2AC0108FCC586E2154BDD0830F242F4F040E28789F'
+    )
+    $hasLatest=(Test-Path -LiteralPath $nrDest -PathType Leaf) -and
+       ((Get-FileHash -LiteralPath $nrDest -Algorithm SHA256).Hash.ToUpperInvariant() -in $latestHashes)
+    if($gpu.Series-in@(20,30,40,50)){
+        if(-not $hasLatest){
+            $oldLocal=if($NrPackage -and $NrPackage.EndsWith('.dll',[StringComparison]::OrdinalIgnoreCase)){$NrPackage}else{''}
+            $nr=Resolve-NrDll $gpu $oldLocal
+            Copy-Item -LiteralPath $nr -Destination $nrDest -Force
+        }else{Write-Host 'Keeping preinstalled verified 310.9.16 NR DLL.' -ForegroundColor Green}
+    }elseif(Test-Path -LiteralPath $nrDest){
+        Remove-Item -LiteralPath $nrDest -Force
+    }
+
+    $ini=Join-Path $trex 'm3k-nr.ini'
+    $existingTech=Get-Ini $ini 'M3K' 'ScalingTechnology'
+    if(-not $gpu.IsRtx){$tech='2'}
+    elseif($existingTech-in@('0','1','2')){$tech=$existingTech}
+    else{$tech='1'}
+
+    Set-Ini $ini 'M3K' 'NvidiaRtxAvailable' $(if($gpu.IsRtx){'1'}else{'0'})
+    Set-Ini $ini 'M3K' 'ScalingTechnology' $tech
+    Set-Ini $ini 'M3K' 'SRProof' $(if($tech-eq'1'){'1'}else{'0'})
+    Set-Ini $ini 'M3K' 'FSRProof' $(if($tech-eq'2'){'1'}else{'0'})
+    if(-not(Get-Ini $ini 'M3K' 'MasterEnabled')){Set-Ini $ini 'M3K' 'MasterEnabled' '1'}
+    if(-not(Get-Ini $ini 'M3K' 'LastSRProfile')){Set-Ini $ini 'M3K' 'LastSRProfile' '2'}
+    if(-not(Get-Ini $ini 'M3K' 'SRProfile')){Set-Ini $ini 'M3K' 'SRProfile' '2'}
+    if(-not(Get-Ini $ini 'M3K' 'CustomScalePercent')){Set-Ini $ini 'M3K' 'CustomScalePercent' '77'}
+    if(-not(Get-Ini $ini 'M3K' 'FSRScalePermille')){Set-Ini $ini 'M3K' 'FSRScalePermille' '667'}
+    if(-not(Get-Ini $ini 'M3K' 'FSRSharpness')){Set-Ini $ini 'M3K' 'FSRSharpness' '0.000'}
+    if(-not(Get-Ini $ini 'M3K' 'JitterMode')){Set-Ini $ini 'M3K' 'JitterMode' '8'}
+    if(-not(Get-Ini $ini 'M3K' 'NvidiaJitterCompMode')){Set-Ini $ini 'M3K' 'NvidiaJitterCompMode' '1'}
+    Set-Ini $ini 'M3K' 'TemporalJitter' '1'
+    if(-not(Get-Ini $ini 'M3K' 'LastNRMode')){Set-Ini $ini 'M3K' 'LastNRMode' '0'}
+    if(-not(Get-Ini $ini 'M3K' 'Mode')){Set-Ini $ini 'M3K' 'Mode' '0'}
+
+    $receipt=@(
+        'GTA IV Scaling',
+        "Version=$Version",
+        "Installed=$(Get-Date -Format o)",
+        "GPU=$($gpu.Name)",
+        "NvidiaRtxAvailable=$(if($gpu.IsRtx){1}else{0})",
+        "DefaultScalingTechnology=$tech",
+        "NeuralRendering=$(if($gpu.Series-in@(20,30,40,50)){'installed-off-by-default'}else{'not-applicable'})",
+        "Pre123Backup=$backup"
+    )
+    [IO.File]::WriteAllLines((Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'),$receipt,[Text.UTF8Encoding]::new($false))
+    Write-Host ''
+    if($gpu.Series-in@(20,30,40,50)){Invoke-NrUpdate $Root $NrPackage}
+    Write-Host 'GTA IV Scaling 1.2.5 installed / repaired successfully.' -ForegroundColor Green
+}
+function Remove-ScalingLeftovers([string]$Root){
+    foreach($name in @(
+        'GTAIV_SCALING_INSTALLED.txt',
+        'DLAA_INSTALL_MANIFEST.txt',
+        'DLAA_AIO_install.log',
+        'DLSS_FULL_INSTALLED.txt',
+        'DLSS_FULL_install.log',
+        'DLSS_FULL_uninstall.log',
+        'DLSS-Full-Control.bat',
+        'Uninstall-DLSS-Full.bat',
+        '_GTAIV_DLSS_Install-DLAA-Core.bat',
+        '_GTAIV_DLSS_Install-DLSS-Full-Core.bat'
+    )){
+        Remove-Item -LiteralPath (Join-Path $Root $name) -Force -ErrorAction SilentlyContinue
+    }
+    foreach($pattern in @(
+        '_GTAIV_SCALING_PRE*_BACKUP_*',
+        '_DLAA_PREINSTALL_BACKUP_*',
+        '_DLSS_FULL_PREINSTALL_BACKUP_*',
+        '_DLSS_FULL_UNINSTALL_SAFETY_*',
+        '_DLAA_UNINSTALL_SAFETY_*'
+    )){
+        Get-ChildItem -LiteralPath $Root -Directory -Filter $pattern -ErrorAction SilentlyContinue |
+            ForEach-Object{Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue}
+    }
+    foreach($name in @('_DLSS_FULL_DLAA_BASELINE')){
+        Remove-Item -LiteralPath (Join-Path $Root $name) -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+function Remove-FusionFix([string]$Root){
+    Write-Host 'Removing pinned FusionFix 5.0.1 files...' -ForegroundColor Cyan
+    $zip=Resolve-FusionFixPackage
+    Assert-SHA256 $zip '3C202398C133392BE985854654F169514E055812CC302EF24E6AA97495975B41' 'FusionFix package'
+    $out=Join-Path (Get-AutoTemp) 'fusionfix-remove'
+    Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+    $dinput=Get-ChildItem -LiteralPath $out -Recurse -File -Filter 'dinput8.dll'|Select-Object -First 1
+    if(-not $dinput){Fail 'FusionFix package did not contain dinput8.dll; refusing full cleanup.'}
+    $packageRoot=$dinput.Directory.FullName
+    $files=@(Get-ChildItem -LiteralPath $packageRoot -Recurse -File -Force)
+    foreach($file in $files){
+        $rel=$file.FullName.Substring($packageRoot.Length).TrimStart('\','/')
+        if(-not $rel){continue}
+        $target=Join-Path $Root $rel
+        if(Test-Path -LiteralPath $target -PathType Leaf){
+            Remove-Item -LiteralPath $target -Force
+        }
+    }
+    foreach($extra in @(
+        'plugins\GTAIV.EFLC.FusionFix.cfg',
+        'plugins\GTAIV.EFLC.FusionFix.ini',
+        'GTAIV.EFLC.FusionFix.cfg',
+        'GTAIV.EFLC.FusionFix.ini'
+    )){
+        Remove-Item -LiteralPath (Join-Path $Root $extra) -Force -ErrorAction SilentlyContinue
+    }
+    $dirs=@(Get-ChildItem -LiteralPath $packageRoot -Recurse -Directory -Force | Sort-Object FullName -Descending)
+    foreach($dir in $dirs){
+        $rel=$dir.FullName.Substring($packageRoot.Length).TrimStart('\','/')
+        if(-not $rel){continue}
+        $target=Join-Path $Root $rel
+        if(Test-Path -LiteralPath $target -PathType Container){
+            if(-not @(Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue).Count){
+                Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    foreach($dir in @('plugins','update')){
+        $target=Join-Path $Root $dir
+        if((Test-Path -LiteralPath $target -PathType Container)-and(-not @(Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue).Count)){
+            Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if(Test-Path -LiteralPath (Join-Path $Root 'dinput8.dll')){Fail 'FusionFix dinput8.dll still exists after full cleanup.'}
+}
+function Remove-Scaling([string]$Root,[bool]$KeepFusionFix){
+    $uninstall=Join-Path $PSScriptRoot 'Uninstall-DLAA.bat'
+    Invoke-Bat $uninstall $Root -NonInteractive
+    Remove-ScalingLeftovers $Root
+    if(-not $KeepFusionFix){Remove-FusionFix $Root}
+}
+
+trap{
+    $message=$_.Exception.Message
+    Write-Host ''
+    Write-Host ('GTA IV Scaling setup failed: '+$message) -ForegroundColor Red
+    Write-Result $message
+    if($script:Temp -and (Test-Path -LiteralPath $script:Temp)){Remove-Item $script:Temp -Recurse -Force -ErrorAction SilentlyContinue}
+    exit 1
+}
+
+$Game=Normalize-GamePath $Game
+if($Action-eq'INSTALL'){Install-Scaling $Game}
+elseif($Action-eq'UPDATE_NR'){Invoke-NrUpdate $Game $NrPackage}
+elseif($Action-eq'REMOVE_KEEP_FUSIONFIX'){Remove-Scaling $Game $true}
+else{Remove-Scaling $Game $false}
+Write-Result 'OK'
+if($script:Temp -and (Test-Path -LiteralPath $script:Temp)){Remove-Item $script:Temp -Recurse -Force -ErrorAction SilentlyContinue}
+exit 0
+){return $false}
     $backup=Join-Path $Root ('_GTAIV_SCALING_PRE123_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
     New-Item -ItemType Directory -Path $backup -Force|Out-Null
     Copy-Item -LiteralPath $receipt -Destination (Join-Path $backup 'GTAIV_SCALING_INSTALLED.txt') -Force
