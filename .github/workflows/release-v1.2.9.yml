@@ -40,17 +40,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve approved v1.2.6 source artifacts'}
           if (-not (Test-Path '_base/installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip')) {throw 'Missing original runtime'}
 
-      - name: Download exact hardware-tested 32-bit bridge client
+      - name: Extract exact hardware-tested 32-bit bridge client from v1.2.8 release artifact
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_v128' -Force | Out-Null
           New-Item -ItemType Directory '_diagnostic' -Force | Out-Null
-          gh run download 39128635228 --repo "$env:GITHUB_REPOSITORY" -n 'gtaiv-bridge-selective-mask-client' -D '_diagnostic'
-          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve validated diagnostic client'}
+          gh run download 39142082599 --repo "$env:GITHUB_REPOSITORY" -n 'GTAIV-Scaling-v1.2.8-pinned-release' -D '_v128'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve the successful v1.2.8 release artifact'}
+          $runtimeZip='_v128/installer/payload/GTAIV-Scaling-Runtime-v1.2.8.zip'
+          if (-not (Test-Path $runtimeZip)) {throw 'v1.2.8 runtime archive missing from release artifact'}
+          Expand-Archive -LiteralPath $runtimeZip -DestinationPath '_v128/runtime' -Force
+          Copy-Item '_v128/runtime/d3d9.dll' '_diagnostic/d3d9.dll' -Force
           $expected='B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF'
           $actual=(Get-FileHash '_diagnostic/d3d9.dll' -Algorithm SHA256).Hash
           if ($actual -ne $expected) {throw "Wrong b-bridge client $actual"}
-          Write-Host "Pinned client verified $actual"
+          Write-Host "Pinned client verified from v1.2.8 release artifact: $actual"
 
       - name: Download and verify upstream GTA IV compatibility mod 1.7.3
         shell: pwsh
