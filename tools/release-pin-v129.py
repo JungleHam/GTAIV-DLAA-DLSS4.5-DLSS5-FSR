@@ -127,7 +127,114 @@ function Repair-V127InstallerOnly([string]$Root){
 function Test-ExistingV128([string]$Root){
     $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
     if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){return $false}
-    if([IO.File]::ReadAllText($receipt) -notmatch '(?m)^Version=1\.2\.8\r?
+    if([IO.File]::ReadAllText($receipt) -notmatch '(?m)^Version=1\.2\.8\r?$'){return $false}
+    if(-not(Test-ApprovedV127Bridge $Root)){Fail 'Installed 1.2.8 renderer differs from approved pin; refusing to overwrite.'}
+    return $true
+}
+function Test-ExistingV129([string]$Root){
+    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
+    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){return $false}
+    if([IO.File]::ReadAllText($receipt) -notmatch '(?m)^Version=1\.2\.9\r?$'){return $false}
+    if(-not(Test-ApprovedV127Bridge $Root)){Fail 'Installed 1.2.9 renderer differs from approved pin; refusing to overwrite.'}
+    return $true
+}
+function Get-ReceiptValue([string]$Text,[string]$Key){
+    $m=[regex]::Match($Text,'(?m)^'+[regex]::Escape($Key)+'=(.*)$')
+    if($m.Success){return $m.Groups[1].Value.Trim()}
+    return ''
+}
+function Install-CompatibilityAsi([string]$Root){
+    if(-not $CompatibilityAsi -or -not(Test-Path -LiteralPath $CompatibilityAsi -PathType Leaf)){
+        Fail 'The upstream GTA IV 1.7.3 compatibility ASI is missing from setup.'
+    }
+    Assert-SHA256 $CompatibilityAsi $CompatibilityAsiHash 'GTA IV compatibility mod 1.7.3'
+    $target=Join-Path $Root 'a_gta4-rtx.asi'
+    $currentHash=''
+    if(Test-Path -LiteralPath $target -PathType Leaf){
+        $currentHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
+    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
+    $oldText=if(Test-Path -LiteralPath $receipt -PathType Leaf){[IO.File]::ReadAllText($receipt)}else{''}
+    if($currentHash -eq $CompatibilityAsiHash){
+        return [pscustomobject]@{
+            Managed=(Get-ReceiptValue $oldText 'CompatibilityAsiManaged')
+            BackupPath=(Get-ReceiptValue $oldText 'CompatibilityAsiBackup')
+            OriginalPresent=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalPresent')
+            OriginalHash=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalHash')
+            InstalledHash=$CompatibilityAsiHash
+        }
+    }
+    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE129_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
+    New-Item -ItemType Directory -Path $backup -Force|Out-Null
+    $originalPresent=Test-Path -LiteralPath $target -PathType Leaf
+    $originalHash=''
+    if($originalPresent){
+        $originalHash=$currentHash
+        Copy-Item -LiteralPath $target -Destination (Join-Path $backup 'a_gta4-rtx.asi') -Force
+        if((Get-FileHash -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash){
+            Fail 'Could not verify the backup of the existing a_gta4-rtx.asi. The original file was not replaced.'
+        }
+    }
+    $info=[pscustomobject]@{
+        Managed='1'
+        BackupPath=$backup
+        OriginalPresent=$(if($originalPresent){'1'}else{'0'})
+        OriginalHash=$originalHash
+        InstalledHash=$CompatibilityAsiHash
+    }
+    $temporary=$target+'.gtaiv-scaling-new'
+    try{
+        Copy-Item -LiteralPath $CompatibilityAsi -Destination $temporary -Force
+        Assert-SHA256 $temporary $CompatibilityAsiHash 'staged GTA IV compatibility ASI 1.7.3'
+        Move-Item -LiteralPath $temporary -Destination $target -Force
+        Assert-SHA256 $target $CompatibilityAsiHash 'installed GTA IV compatibility ASI 1.7.3'
+        Write-CompatibilityReceipt $Root $info
+    }catch{
+        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        if($originalPresent){Copy-Item -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Destination $target -Force}
+        elseif(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Force}
+        throw
+    }
+    Write-Host 'Installed upstream GTA IV compatibility mod 1.7.3 (Social Club overlay device fix).' -ForegroundColor Green
+    return $info
+}
+function Write-CompatibilityReceipt([string]$Root,[object]$Info){
+    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
+    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){Fail 'Scaling receipt is missing while recording compatibility ASI state.'}
+    $values=[ordered]@{
+        CompatibilityAsiVersion='1.7.3'
+        CompatibilityAsiManaged=[string]$Info.Managed
+        CompatibilityAsiInstalledHash=[string]$Info.InstalledHash
+        CompatibilityAsiOriginalPresent=[string]$Info.OriginalPresent
+        CompatibilityAsiOriginalHash=[string]$Info.OriginalHash
+        CompatibilityAsiBackup=[string]$Info.BackupPath
+    }
+    $lines=New-Object 'System.Collections.Generic.List[string]'
+    $seen=@{}
+    foreach($line in [IO.File]::ReadAllLines($receipt)){
+        if($line -match '^([^=]+)='){
+            $key=$Matches[1]
+            if($values.Contains($key)){
+                [void]$lines.Add($key+'='+$values[$key])
+                $seen[$key]=$true
+                continue
+            }
+            if($key -eq 'Version'){
+                [void]$lines.Add('Version=1.2.9')
+                continue
+            }
+        }
+        [void]$lines.Add($line)
+    }
+    foreach($key in $values.Keys){
+        if(-not $seen.ContainsKey($key)){[void]$lines.Add($key+'='+$values[$key])}
+    }
+    $temporary=$receipt+'.gtaiv-scaling-receipt.tmp'
+    [IO.File]::WriteAllLines($temporary,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $temporary -Destination $receipt -Force
+}
+
+'''
 
 def is_pe_i386(data):
     need(len(data) > 0x40 and data[:2] == b"MZ", "Compatibility ASI is not a PE executable")
@@ -252,468 +359,6 @@ def main():
     print(f"RUNTIME ZIP SHA256={runtimehash}")
     print(f"FEEDER SHA256={FEEDER_SHA}")
     print(f"COMPATIBILITY ASI 1.7.3 SHA256={compatibility_hash}")
-    print(f"CHANGED RUNTIME FILES={sorted(changed)}")
-    print(f"FOUNDATION HASH ENTRIES={n[0]}")
-    print("PASS: payload and Inno sources ready")
-    
-if __name__=="__main__":
-    main()
-){return $false}
-    if(-not(Test-ApprovedV127Bridge $Root)){Fail 'Installed 1.2.9 renderer differs from approved pin; refusing to overwrite.'}
-    return $true
-}
-function Test-ExistingV129([string]$Root){
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){return $false}
-    if([IO.File]::ReadAllText($receipt) -notmatch '(?m)^Version=1\.2\.9\r?
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--base", type=Path, required=True, help="Unpacked v1.2.6 release-prep artifact")
-    ap.add_argument("--client", type=Path, required=True, help="Successful selective-mask diagnostic d3d9.dll")
-    args = ap.parse_args()
-    repo=Path.cwd()
-    runtime_zip=args.base / "installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip"
-    need(runtime_zip.is_file(), f"Missing {runtime_zip}")
-    need(sha(runtime_zip.read_bytes())==BASE_RUNTIME_SHA, "Wrong v1.2.6 runtime")
-    need(sha(args.client.read_bytes())==TESTED_CLIENT_SHA, "Wrong or untested bridge DLL")
-    src=repo / "_runtime127"
-    if src.exists(): shutil.rmtree(src)
-    src.mkdir()
-    with zipfile.ZipFile(runtime_zip) as archive:
-        names=set(archive.namelist())
-        need("d3d9.dll" in names and "bridge.conf" in names and "SHA256SUMS.txt" in names, "Bad old runtime")
-        for item in archive.infolist():
-            target=src / item.filename
-            if item.is_dir(): target.mkdir(parents=True,exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True,exist_ok=True)
-                target.write_bytes(archive.read(item.filename))
-    original={f.relative_to(src).as_posix():sha(f.read_bytes()) for f in src.rglob("*") if f.is_file()}
-    need(sha((src/"dlss5-feed.addon64").read_bytes())==FEEDER_SHA,"Feeder mismatch")
-    (src/"d3d9.dll").write_bytes(args.client.read_bytes())
-    (src/"bridge.conf").write_bytes(change_config((src/"bridge.conf").read_bytes()))
-    (src/"GTAIV-SCALING-VERSION.txt").write_bytes(b"GTA IV Scaling runtime 1.2.9 - pinned shader/stream state fix\n")
-    hashes=[]
-    for f in sorted(src.rglob("*")):
-        if f.is_file() and f.name != "SHA256SUMS.txt":
-            hashes.append(f"{sha(f.read_bytes())}  {f.relative_to(src).as_posix()}")
-    (src/"SHA256SUMS.txt").write_text("\n".join(hashes)+"\n",encoding="ascii")
-    changed=[rel for rel,old in original.items() if sha((src/rel).read_bytes())!=old]
-    expected={"d3d9.dll","bridge.conf","GTAIV-SCALING-VERSION.txt","SHA256SUMS.txt"}
-    need(set(changed)==expected, f"Unexpected changed runtime files: {changed}")
-    config=(src/"bridge.conf").read_text(encoding="utf-8")
-    for setting in ["eliminateRedundantSetterCalls = True","clientStateBatch = True","clientRedundantBypassMask = 1032192"]:
-        need(setting in config, f"Missing pinned setting: {setting}")
-
-    payload=repo/"installer/payload"
-    payload.mkdir(parents=True,exist_ok=True)
-    out_zip=payload/"GTAIV-Scaling-Runtime-v1.2.9.zip"
-    with zipfile.ZipFile(out_zip,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
-        for file in sorted(src.rglob("*")):
-            if file.is_file():z.write(file,file.relative_to(src).as_posix())
-    runtimehash=sha(out_zip.read_bytes())
-    (payload/"GTAIV-Scaling-Runtime-v1.2.9.sha256").write_text(runtimehash+"\n",encoding="ascii")
-    (payload/"dlss5-feed-v1.2.9.sha256").write_text(FEEDER_SHA+"\n",encoding="ascii")
-    patch_src=args.base/"installer/payload/ReShade64-bbridge.dll"
-    need(sha(patch_src.read_bytes())==RESH_PATCH_SHA,"Wrong ReShade input patch")
-    shutil.copyfile(patch_src,payload/"ReShade64-bbridge.dll")
-
-    core=(repo/"install/core/Install-DLAA-Core.bat").read_text(encoding="utf-8")
-    core=replace_once(core,"A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3",runtimehash,"foundation runtime checksum")
-    core=replace_once(core,"B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27",FEEDER_SHA,"foundation feeder checksum")
-    core=core.replace("GTAIV-DLSS-Setup.exe","GTAIV-Scaling-Setup-v1.2.9.exe")
-    match=re.search(r"(?s)\$RuntimeHashes=@\{(.*?)\}",core)
-    need(match is not None,"RuntimeHashes table missing")
-    line=re.compile(r"(?m)^([ \t]*'([^']+)'[ \t]*=[ \t]*')([0-9A-Fa-f]{64})('[ \t]*;?[ \t]*\r?$)")
-    n=[0]
-    def replace_entry(m):
-        rel=m.group(2)
-        f=src/rel
-        need(f.is_file(),f"Missing foundation runtime file {rel}")
-        n[0]+=1
-        return m.group(1)+sha(f.read_bytes())+m.group(4)
-    block=line.sub(replace_entry,match.group(1))
-    need(n[0]>=10,f"Only {n[0]} foundation hashes")
-    core=core[:match.start(1)]+block+core[match.end(1):]
-    (payload/"Install-DLAA-Core-v1.2.9.bat").write_text(core,encoding="utf-8")
-
-    runner=(repo/"installer/Run-Scaling-Action-v128.ps1").read_text(encoding="utf-8")
-    runner=replace_once(runner,"$Version='1.2.6'","$Version='1.2.9'","runner version")
-    runner=runner.replace("v1.2.6","v1.2.9")
-    runner=replace_once(runner,
-        "if(Repair-V122AspectRatio $Root){Upgrade-AddonUi $Root;TryAutoNrUpdate $Root $NrPackage;return}",
-        "# The old v1.2.2-1.2.4 config-only shortcut must NOT skip the v1.2.9 bridge DLL.",
-        "old config-only shortcut")
-    runner=replace_once(runner,"function Install-Scaling([string]$Root){",
-        fast_upgrade()+maintenance_fast_path()+"function Install-Scaling([string]$Root){","hotfix insertion point")
-    runner=replace_once(runner,
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}",
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}\n" +
-        "    if(Test-ExistingV128 $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'Already on v1.2.9, graphics preserved.';return}\n" +
-        "    if(Repair-V127InstallerOnly $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.9 installer-only maintenance, graphics preserved.';return}\n" +
-        "    if(Repair-V126BridgePin $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.6 upgraded with approved bridge pin; NR choice processed.';return}",
-        "v1.2.6 fast hotfix invocation")
-    for key,value in [("__SCALING_RUNTIME_SHA256__",runtimehash),("__SCALING_FEEDER_SHA256__",FEEDER_SHA)]:
-        runner=replace_once(runner,key,value,f"runner {key}")
-    (payload/"Run-Scaling-Action.ps1").write_text(runner,encoding="utf-8")
-
-    iss_path=repo/"installer/GTAIV-Scaling-Setup-v128.iss"
-    iss=iss_path.read_text(encoding="utf-8")
-    need(iss.count("1.2.6")>=8,"Unexpected Inno source version")
-    iss=iss.replace("1.2.6","1.2.9")
-    iss_path.write_text(iss,encoding="utf-8")
-    need("1.2.6" not in iss,"Stale Inno version")
-    print(f"PINNED CLIENT SHA256={TESTED_CLIENT_SHA}")
-    print(f"RUNTIME ZIP SHA256={runtimehash}")
-    print(f"FEEDER SHA256={FEEDER_SHA}")
-    print(f"CHANGED RUNTIME FILES={sorted(changed)}")
-    print(f"FOUNDATION HASH ENTRIES={n[0]}")
-    print("PASS: payload and Inno sources ready")
-    
-if __name__=="__main__":
-    main()
-){return $false}
-    if(-not(Test-ApprovedV127Bridge $Root)){Fail 'Installed 1.2.9 renderer differs from approved pin; refusing to overwrite.'}
-    return $true
-}
-function Get-ReceiptValue([string]$Text,[string]$Key){
-    $m=[regex]::Match($Text,'(?m)^'+[regex]::Escape($Key)+'=(.*)
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--base", type=Path, required=True, help="Unpacked v1.2.6 release-prep artifact")
-    ap.add_argument("--client", type=Path, required=True, help="Successful selective-mask diagnostic d3d9.dll")
-    args = ap.parse_args()
-    repo=Path.cwd()
-    runtime_zip=args.base / "installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip"
-    need(runtime_zip.is_file(), f"Missing {runtime_zip}")
-    need(sha(runtime_zip.read_bytes())==BASE_RUNTIME_SHA, "Wrong v1.2.6 runtime")
-    need(sha(args.client.read_bytes())==TESTED_CLIENT_SHA, "Wrong or untested bridge DLL")
-    src=repo / "_runtime127"
-    if src.exists(): shutil.rmtree(src)
-    src.mkdir()
-    with zipfile.ZipFile(runtime_zip) as archive:
-        names=set(archive.namelist())
-        need("d3d9.dll" in names and "bridge.conf" in names and "SHA256SUMS.txt" in names, "Bad old runtime")
-        for item in archive.infolist():
-            target=src / item.filename
-            if item.is_dir(): target.mkdir(parents=True,exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True,exist_ok=True)
-                target.write_bytes(archive.read(item.filename))
-    original={f.relative_to(src).as_posix():sha(f.read_bytes()) for f in src.rglob("*") if f.is_file()}
-    need(sha((src/"dlss5-feed.addon64").read_bytes())==FEEDER_SHA,"Feeder mismatch")
-    (src/"d3d9.dll").write_bytes(args.client.read_bytes())
-    (src/"bridge.conf").write_bytes(change_config((src/"bridge.conf").read_bytes()))
-    (src/"GTAIV-SCALING-VERSION.txt").write_bytes(b"GTA IV Scaling runtime 1.2.9 - pinned shader/stream state fix\n")
-    hashes=[]
-    for f in sorted(src.rglob("*")):
-        if f.is_file() and f.name != "SHA256SUMS.txt":
-            hashes.append(f"{sha(f.read_bytes())}  {f.relative_to(src).as_posix()}")
-    (src/"SHA256SUMS.txt").write_text("\n".join(hashes)+"\n",encoding="ascii")
-    changed=[rel for rel,old in original.items() if sha((src/rel).read_bytes())!=old]
-    expected={"d3d9.dll","bridge.conf","GTAIV-SCALING-VERSION.txt","SHA256SUMS.txt"}
-    need(set(changed)==expected, f"Unexpected changed runtime files: {changed}")
-    config=(src/"bridge.conf").read_text(encoding="utf-8")
-    for setting in ["eliminateRedundantSetterCalls = True","clientStateBatch = True","clientRedundantBypassMask = 1032192"]:
-        need(setting in config, f"Missing pinned setting: {setting}")
-
-    payload=repo/"installer/payload"
-    payload.mkdir(parents=True,exist_ok=True)
-    out_zip=payload/"GTAIV-Scaling-Runtime-v1.2.9.zip"
-    with zipfile.ZipFile(out_zip,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
-        for file in sorted(src.rglob("*")):
-            if file.is_file():z.write(file,file.relative_to(src).as_posix())
-    runtimehash=sha(out_zip.read_bytes())
-    (payload/"GTAIV-Scaling-Runtime-v1.2.9.sha256").write_text(runtimehash+"\n",encoding="ascii")
-    (payload/"dlss5-feed-v1.2.9.sha256").write_text(FEEDER_SHA+"\n",encoding="ascii")
-    patch_src=args.base/"installer/payload/ReShade64-bbridge.dll"
-    need(sha(patch_src.read_bytes())==RESH_PATCH_SHA,"Wrong ReShade input patch")
-    shutil.copyfile(patch_src,payload/"ReShade64-bbridge.dll")
-
-    core=(repo/"install/core/Install-DLAA-Core.bat").read_text(encoding="utf-8")
-    core=replace_once(core,"A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3",runtimehash,"foundation runtime checksum")
-    core=replace_once(core,"B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27",FEEDER_SHA,"foundation feeder checksum")
-    core=core.replace("GTAIV-DLSS-Setup.exe","GTAIV-Scaling-Setup-v1.2.9.exe")
-    match=re.search(r"(?s)\$RuntimeHashes=@\{(.*?)\}",core)
-    need(match is not None,"RuntimeHashes table missing")
-    line=re.compile(r"(?m)^([ \t]*'([^']+)'[ \t]*=[ \t]*')([0-9A-Fa-f]{64})('[ \t]*;?[ \t]*\r?$)")
-    n=[0]
-    def replace_entry(m):
-        rel=m.group(2)
-        f=src/rel
-        need(f.is_file(),f"Missing foundation runtime file {rel}")
-        n[0]+=1
-        return m.group(1)+sha(f.read_bytes())+m.group(4)
-    block=line.sub(replace_entry,match.group(1))
-    need(n[0]>=10,f"Only {n[0]} foundation hashes")
-    core=core[:match.start(1)]+block+core[match.end(1):]
-    (payload/"Install-DLAA-Core-v1.2.9.bat").write_text(core,encoding="utf-8")
-
-    runner=(repo/"installer/Run-Scaling-Action-v128.ps1").read_text(encoding="utf-8")
-    runner=replace_once(runner,"$Version='1.2.6'","$Version='1.2.9'","runner version")
-    runner=runner.replace("v1.2.6","v1.2.9")
-    runner=replace_once(runner,
-        "if(Repair-V122AspectRatio $Root){Upgrade-AddonUi $Root;TryAutoNrUpdate $Root $NrPackage;return}",
-        "# The old v1.2.2-1.2.4 config-only shortcut must NOT skip the v1.2.9 bridge DLL.",
-        "old config-only shortcut")
-    runner=replace_once(runner,"function Install-Scaling([string]$Root){",
-        fast_upgrade()+maintenance_fast_path()+"function Install-Scaling([string]$Root){","hotfix insertion point")
-    runner=replace_once(runner,
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}",
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}\n" +
-        "    if(Test-ExistingV128 $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'Already on v1.2.9, graphics preserved.';return}\n" +
-        "    if(Repair-V127InstallerOnly $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.9 installer-only maintenance, graphics preserved.';return}\n" +
-        "    if(Repair-V126BridgePin $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.6 upgraded with approved bridge pin; NR choice processed.';return}",
-        "v1.2.6 fast hotfix invocation")
-    for key,value in [("__SCALING_RUNTIME_SHA256__",runtimehash),("__SCALING_FEEDER_SHA256__",FEEDER_SHA)]:
-        runner=replace_once(runner,key,value,f"runner {key}")
-    (payload/"Run-Scaling-Action.ps1").write_text(runner,encoding="utf-8")
-
-    iss_path=repo/"installer/GTAIV-Scaling-Setup-v128.iss"
-    iss=iss_path.read_text(encoding="utf-8")
-    need(iss.count("1.2.6")>=8,"Unexpected Inno source version")
-    iss=iss.replace("1.2.6","1.2.9")
-    iss_path.write_text(iss,encoding="utf-8")
-    need("1.2.6" not in iss,"Stale Inno version")
-    print(f"PINNED CLIENT SHA256={TESTED_CLIENT_SHA}")
-    print(f"RUNTIME ZIP SHA256={runtimehash}")
-    print(f"FEEDER SHA256={FEEDER_SHA}")
-    print(f"CHANGED RUNTIME FILES={sorted(changed)}")
-    print(f"FOUNDATION HASH ENTRIES={n[0]}")
-    print("PASS: payload and Inno sources ready")
-    
-if __name__=="__main__":
-    main()
-)
-    if($m.Success){return $m.Groups[1].Value.Trim()}
-    return ''
-}
-function Install-CompatibilityAsi([string]$Root){
-    if(-not $CompatibilityAsi -or -not(Test-Path -LiteralPath $CompatibilityAsi -PathType Leaf)){
-        Fail 'The upstream GTA IV 1.7.3 compatibility ASI is missing from setup.'
-    }
-    Assert-SHA256 $CompatibilityAsi $CompatibilityAsiHash 'GTA IV compatibility mod 1.7.3'
-    $target=Join-Path $Root 'a_gta4-rtx.asi'
-    $currentHash=''
-    if(Test-Path -LiteralPath $target -PathType Leaf){
-        $currentHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
-    }
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    $oldText=if(Test-Path -LiteralPath $receipt -PathType Leaf){[IO.File]::ReadAllText($receipt)}else{''}
-    if($currentHash -eq $CompatibilityAsiHash){
-        return [pscustomobject]@{
-            Managed=(Get-ReceiptValue $oldText 'CompatibilityAsiManaged')
-            BackupPath=(Get-ReceiptValue $oldText 'CompatibilityAsiBackup')
-            OriginalPresent=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalPresent')
-            OriginalHash=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalHash')
-            InstalledHash=$CompatibilityAsiHash
-        }
-    }
-    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE129_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
-    New-Item -ItemType Directory -Path $backup -Force|Out-Null
-    $originalPresent=Test-Path -LiteralPath $target -PathType Leaf
-    $originalHash=''
-    if($originalPresent){
-        $originalHash=$currentHash
-        Copy-Item -LiteralPath $target -Destination (Join-Path $backup 'a_gta4-rtx.asi') -Force
-        if((Get-FileHash -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash){
-            Fail 'Could not verify the backup of the existing a_gta4-rtx.asi. The original file was not replaced.'
-        }
-    }
-    $info=[pscustomobject]@{
-        Managed='1'
-        BackupPath=$backup
-        OriginalPresent=$(if($originalPresent){'1'}else{'0'})
-        OriginalHash=$originalHash
-        InstalledHash=$CompatibilityAsiHash
-    }
-    $temporary=$target+'.gtaiv-scaling-new'
-    try{
-        Copy-Item -LiteralPath $CompatibilityAsi -Destination $temporary -Force
-        Assert-SHA256 $temporary $CompatibilityAsiHash 'staged GTA IV compatibility ASI 1.7.3'
-        Move-Item -LiteralPath $temporary -Destination $target -Force
-        Assert-SHA256 $target $CompatibilityAsiHash 'installed GTA IV compatibility ASI 1.7.3'
-        Write-CompatibilityReceipt $Root $info
-    }catch{
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-        if($originalPresent){Copy-Item -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Destination $target -Force}
-        elseif(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Force}
-        throw
-    }
-    Write-Host 'Installed upstream GTA IV compatibility mod 1.7.3 (Social Club overlay device fix).' -ForegroundColor Green
-    return $info
-}
-function Write-CompatibilityReceipt([string]$Root,[object]$Info){
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){Fail 'Scaling receipt is missing while recording compatibility ASI state.'}
-    $values=[ordered]@{
-        CompatibilityAsiVersion='1.7.3'
-        CompatibilityAsiManaged=[string]$Info.Managed
-        CompatibilityAsiInstalledHash=[string]$Info.InstalledHash
-        CompatibilityAsiOriginalPresent=[string]$Info.OriginalPresent
-        CompatibilityAsiOriginalHash=[string]$Info.OriginalHash
-        CompatibilityAsiBackup=[string]$Info.BackupPath
-    }
-    $lines=New-Object 'System.Collections.Generic.List[string]'
-    $seen=@{}
-    foreach($line in [IO.File]::ReadAllLines($receipt)){
-        if($line -match '^([^=]+)='){
-            $key=$Matches[1]
-            if($values.Contains($key)){
-                [void]$lines.Add($key+'='+$values[$key])
-                $seen[$key]=$true
-                continue
-            }
-            if($key -eq 'Version'){
-                [void]$lines.Add('Version=1.2.9')
-                continue
-            }
-        }
-        [void]$lines.Add($line)
-    }
-    foreach($key in $values.Keys){
-        if(-not $seen.ContainsKey($key)){[void]$lines.Add($key+'='+$values[$key])}
-    }
-    $temporary=$receipt+'.gtaiv-scaling-receipt.tmp'
-    [IO.File]::WriteAllLines($temporary,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $receipt -Force
-}
-function Restore-CompatibilityAsi([string]$Root){
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){return}
-    $text=[IO.File]::ReadAllText($receipt)
-    if((Get-ReceiptValue $text 'CompatibilityAsiManaged') -ne '1'){return}
-    $target=Join-Path $Root 'a_gta4-rtx.asi'
-    $installedHash=Get-ReceiptValue $text 'CompatibilityAsiInstalledHash'
-    $currentHash=''
-    if(Test-Path -LiteralPath $target -PathType Leaf){$currentHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()}
-    if($currentHash -and $currentHash -ne $installedHash){
-        Write-Warning 'a_gta4-rtx.asi was modified after installation; preserving the current file instead of overwriting user changes.'
-        return
-    }
-    if((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -eq '1'){
-        $backupDir=Get-ReceiptValue $text 'CompatibilityAsiBackup'
-        if(-not $backupDir){Fail 'The original compatibility ASI backup path is missing; refusing to uninstall.'}
-        $rootFull=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
-        $backupFull=[IO.Path]::GetFullPath($backupDir)
-        if(-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){
-            Fail 'Compatibility ASI backup path is outside the GTA IV folder; refusing to restore it.'
-        }
-        $backupFile=Join-Path $backupFull 'a_gta4-rtx.asi'
-        if(-not(Test-Path -LiteralPath $backupFile -PathType Leaf)){Fail 'Original a_gta4-rtx.asi backup is missing; refusing to uninstall.'}
-        $originalHash=Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
-        Assert-SHA256 $backupFile $originalHash 'original compatibility ASI backup'
-        Copy-Item -LiteralPath $backupFile -Destination $target -Force
-        Assert-SHA256 $target $originalHash 'restored original compatibility ASI'
-    }elseif($currentHash -eq $installedHash){
-        Remove-Item -LiteralPath $target -Force
-    }
-    Write-Host 'Restored the pre-install a_gta4-rtx.asi state.' -ForegroundColor Green
-}
-'''
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--base", type=Path, required=True, help="Unpacked v1.2.6 release-prep artifact")
-    ap.add_argument("--client", type=Path, required=True, help="Successful selective-mask diagnostic d3d9.dll")
-    args = ap.parse_args()
-    repo=Path.cwd()
-    runtime_zip=args.base / "installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip"
-    need(runtime_zip.is_file(), f"Missing {runtime_zip}")
-    need(sha(runtime_zip.read_bytes())==BASE_RUNTIME_SHA, "Wrong v1.2.6 runtime")
-    need(sha(args.client.read_bytes())==TESTED_CLIENT_SHA, "Wrong or untested bridge DLL")
-    src=repo / "_runtime127"
-    if src.exists(): shutil.rmtree(src)
-    src.mkdir()
-    with zipfile.ZipFile(runtime_zip) as archive:
-        names=set(archive.namelist())
-        need("d3d9.dll" in names and "bridge.conf" in names and "SHA256SUMS.txt" in names, "Bad old runtime")
-        for item in archive.infolist():
-            target=src / item.filename
-            if item.is_dir(): target.mkdir(parents=True,exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True,exist_ok=True)
-                target.write_bytes(archive.read(item.filename))
-    original={f.relative_to(src).as_posix():sha(f.read_bytes()) for f in src.rglob("*") if f.is_file()}
-    need(sha((src/"dlss5-feed.addon64").read_bytes())==FEEDER_SHA,"Feeder mismatch")
-    (src/"d3d9.dll").write_bytes(args.client.read_bytes())
-    (src/"bridge.conf").write_bytes(change_config((src/"bridge.conf").read_bytes()))
-    (src/"GTAIV-SCALING-VERSION.txt").write_bytes(b"GTA IV Scaling runtime 1.2.9 - pinned shader/stream state fix\n")
-    hashes=[]
-    for f in sorted(src.rglob("*")):
-        if f.is_file() and f.name != "SHA256SUMS.txt":
-            hashes.append(f"{sha(f.read_bytes())}  {f.relative_to(src).as_posix()}")
-    (src/"SHA256SUMS.txt").write_text("\n".join(hashes)+"\n",encoding="ascii")
-    changed=[rel for rel,old in original.items() if sha((src/rel).read_bytes())!=old]
-    expected={"d3d9.dll","bridge.conf","GTAIV-SCALING-VERSION.txt","SHA256SUMS.txt"}
-    need(set(changed)==expected, f"Unexpected changed runtime files: {changed}")
-    config=(src/"bridge.conf").read_text(encoding="utf-8")
-    for setting in ["eliminateRedundantSetterCalls = True","clientStateBatch = True","clientRedundantBypassMask = 1032192"]:
-        need(setting in config, f"Missing pinned setting: {setting}")
-
-    payload=repo/"installer/payload"
-    payload.mkdir(parents=True,exist_ok=True)
-    out_zip=payload/"GTAIV-Scaling-Runtime-v1.2.9.zip"
-    with zipfile.ZipFile(out_zip,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
-        for file in sorted(src.rglob("*")):
-            if file.is_file():z.write(file,file.relative_to(src).as_posix())
-    runtimehash=sha(out_zip.read_bytes())
-    (payload/"GTAIV-Scaling-Runtime-v1.2.9.sha256").write_text(runtimehash+"\n",encoding="ascii")
-    (payload/"dlss5-feed-v1.2.9.sha256").write_text(FEEDER_SHA+"\n",encoding="ascii")
-    patch_src=args.base/"installer/payload/ReShade64-bbridge.dll"
-    need(sha(patch_src.read_bytes())==RESH_PATCH_SHA,"Wrong ReShade input patch")
-    shutil.copyfile(patch_src,payload/"ReShade64-bbridge.dll")
-
-    core=(repo/"install/core/Install-DLAA-Core.bat").read_text(encoding="utf-8")
-    core=replace_once(core,"A0796FA04DFACEC7997B08BEFE1933EFBB17D2BC62478CB41B8C89750674CEE3",runtimehash,"foundation runtime checksum")
-    core=replace_once(core,"B6D7D9B050C4F32642A528E7700F38A0510795C7D61D30665DC96AF270B9ED27",FEEDER_SHA,"foundation feeder checksum")
-    core=core.replace("GTAIV-DLSS-Setup.exe","GTAIV-Scaling-Setup-v1.2.9.exe")
-    match=re.search(r"(?s)\$RuntimeHashes=@\{(.*?)\}",core)
-    need(match is not None,"RuntimeHashes table missing")
-    line=re.compile(r"(?m)^([ \t]*'([^']+)'[ \t]*=[ \t]*')([0-9A-Fa-f]{64})('[ \t]*;?[ \t]*\r?$)")
-    n=[0]
-    def replace_entry(m):
-        rel=m.group(2)
-        f=src/rel
-        need(f.is_file(),f"Missing foundation runtime file {rel}")
-        n[0]+=1
-        return m.group(1)+sha(f.read_bytes())+m.group(4)
-    block=line.sub(replace_entry,match.group(1))
-    need(n[0]>=10,f"Only {n[0]} foundation hashes")
-    core=core[:match.start(1)]+block+core[match.end(1):]
-    (payload/"Install-DLAA-Core-v1.2.9.bat").write_text(core,encoding="utf-8")
-
-    runner=(repo/"installer/Run-Scaling-Action-v128.ps1").read_text(encoding="utf-8")
-    runner=replace_once(runner,"$Version='1.2.6'","$Version='1.2.9'","runner version")
-    runner=runner.replace("v1.2.6","v1.2.9")
-    runner=replace_once(runner,
-        "if(Repair-V122AspectRatio $Root){Upgrade-AddonUi $Root;TryAutoNrUpdate $Root $NrPackage;return}",
-        "# The old v1.2.2-1.2.4 config-only shortcut must NOT skip the v1.2.9 bridge DLL.",
-        "old config-only shortcut")
-    runner=replace_once(runner,"function Install-Scaling([string]$Root){",
-        fast_upgrade()+maintenance_fast_path()+"function Install-Scaling([string]$Root){","hotfix insertion point")
-    runner=replace_once(runner,
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}",
-        "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}\n" +
-        "    if(Test-ExistingV128 $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'Already on v1.2.9, graphics preserved.';return}\n" +
-        "    if(Repair-V127InstallerOnly $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.9 installer-only maintenance, graphics preserved.';return}\n" +
-        "    if(Repair-V126BridgePin $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.6 upgraded with approved bridge pin; NR choice processed.';return}",
-        "v1.2.6 fast hotfix invocation")
-    for key,value in [("__SCALING_RUNTIME_SHA256__",runtimehash),("__SCALING_FEEDER_SHA256__",FEEDER_SHA)]:
-        runner=replace_once(runner,key,value,f"runner {key}")
-    (payload/"Run-Scaling-Action.ps1").write_text(runner,encoding="utf-8")
-
-    iss_path=repo/"installer/GTAIV-Scaling-Setup-v128.iss"
-    iss=iss_path.read_text(encoding="utf-8")
-    need(iss.count("1.2.6")>=8,"Unexpected Inno source version")
-    iss=iss.replace("1.2.6","1.2.9")
-    iss_path.write_text(iss,encoding="utf-8")
-    need("1.2.6" not in iss,"Stale Inno version")
-    print(f"PINNED CLIENT SHA256={TESTED_CLIENT_SHA}")
-    print(f"RUNTIME ZIP SHA256={runtimehash}")
-    print(f"FEEDER SHA256={FEEDER_SHA}")
     print(f"CHANGED RUNTIME FILES={sorted(changed)}")
     print(f"FOUNDATION HASH ENTRIES={n[0]}")
     print("PASS: payload and Inno sources ready")
