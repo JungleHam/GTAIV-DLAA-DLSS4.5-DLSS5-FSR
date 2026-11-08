@@ -32,7 +32,6 @@ Source: "payload\Run-Scaling-Action.ps1"; Flags: dontcopy
 Source: "Update-NR-v128.ps1"; Flags: dontcopy; DestName: "Update-NR.ps1"
 Source: "Install-Latest-FusionFix.ps1"; Flags: dontcopy
 Source: "payload\GTAIV-Scaling-Runtime-v1.2.6.zip"; Flags: dontcopy
-Source: "payload\a_gta4-rtx-1.7.3.asi"; Flags: dontcopy
 Source: "payload\ReShade64-bbridge.dll"; Flags: dontcopy
 
 [Code]
@@ -341,7 +340,6 @@ begin
   ExtractTemporaryFile('Install-Latest-FusionFix.ps1');
   ExtractTemporaryFile('GTAIV-Scaling-Runtime-v1.2.6.zip');
   ExtractTemporaryFile('ReShade64-bbridge.dll');
-  ExtractTemporaryFile('a_gta4-rtx-1.7.3.asi');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -370,8 +368,7 @@ begin
       ' -Game ' + QuoteArg(GameDir) +
       ' -RuntimePackage ' + QuoteArg(ExpandConstant('{tmp}\GTAIV-Scaling-Runtime-v1.2.6.zip')) +
       ' -ReShadePatch ' + QuoteArg(ExpandConstant('{tmp}\ReShade64-bbridge.dll')) +
-      ' -ResultFile ' + QuoteArg(ResultPath) +
-      ' -CompatibilityAsi ' + QuoteArg(ExpandConstant('{tmp}\a_gta4-rtx-1.7.3.asi'));
+      ' -ResultFile ' + QuoteArg(ResultPath);
 
     if (SelectedAction = 0) and (not FoundationPresent) and FileExists(ReShadePage.Values[0]) then
       Args := Args + ' -ReShadeSetup ' + QuoteArg(ReShadePage.Values[0]);
