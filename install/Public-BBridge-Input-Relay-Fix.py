@@ -15,34 +15,61 @@ if not window_path.is_file() or not di_path.is_file():
 window = window_path.read_text(encoding="utf-8")
 window_marker = "M3K-BBRIDGE-RELAY-ACK-HOOK"
 if window_marker not in window:
+    include_anchor = "#include <unordered_map>"
+    if include_anchor not in window:
+        raise SystemExit("could not find window.cpp unordered_map include")
+    window = window.replace(
+        include_anchor,
+        include_anchor + "\n#include <algorithm>\n#include <vector>",
+        1,
+    )
+
     anchor = "bool g_bActivateProcessed = false;\n"
     helper = r'''
 // M3K-BBRIDGE-RELAY-ACK-HOOK
-// ReShade lives in NvRemixBridge.exe, while this WndProc lives in GTAIV.exe.
-// A SendMessageTimeout success alone does NOT prove that RemixWndProc handled
-// the registered handshake. Keep a thread-specific CALLWNDPROC hook as a
-// fallback so the relay still works if another component changes the HWND's
-// WndProc chain or ReShade targets a sibling/child HWND on the same UI thread.
-HHOOK g_relayHandshakeHook = nullptr;
-DWORD g_relayHandshakeHookThread = 0;
+// ReShade runs in NvRemixBridge.exe, while the b-bridge client and its
+// MessageChannelClient run in GTAIV.exe. Do not treat a successful
+// SendMessageTimeout as proof that the registered handshake was handled.
+// A thread-specific CALLWNDPROC hook observes the handshake even if another
+// component changes a window's WndProc chain, and explicitly ACKs the worker.
+std::unordered_map<DWORD, HHOOK> g_relayHandshakeHooks;
 UINT g_relayHandshakeMsg = 0;
 UINT g_relayAckMsg = 0;
 UINT g_relayUiActiveMsg = 0;
 
-static void acknowledgeRelayThread(HWND hwnd, WPARAM threadId, const char *source)
+struct RelayHookThreadList
 {
-  if (g_relayAckMsg == 0)
-    g_relayAckMsg = RegisterWindowMessageA("UWM_REMIX_BRIDGE_INPUT_RELAY_ACK_MSG");
+  DWORD processId;
+  std::vector<DWORD> threadIds;
+};
 
-  if (g_relayAckMsg == 0 || threadId == 0)
+static void addRelayHookThread(RelayHookThreadList &list, HWND hwnd)
+{
+  if (hwnd == nullptr || !IsWindow(hwnd))
     return;
 
-  const BOOL posted = PostThreadMessageW(
-    static_cast<DWORD>(threadId), g_relayAckMsg, 1, 0);
+  DWORD processId = 0;
+  const DWORD threadId = GetWindowThreadProcessId(hwnd, &processId);
+  if (processId != list.processId || threadId == 0)
+    return;
 
-  Logger::info(format_string(
-    "[M3K-BBRIDGE-RELAY-ACK] source=%s hwnd=%p worker=%lu posted=%d",
-    source, hwnd, static_cast<unsigned long>(threadId), posted ? 1 : 0));
+  if (std::find(list.threadIds.begin(), list.threadIds.end(), threadId) == list.threadIds.end())
+    list.threadIds.push_back(threadId);
+}
+
+static BOOL CALLBACK enumRelayChildWindows(HWND hwnd, LPARAM parameter)
+{
+  auto *list = reinterpret_cast<RelayHookThreadList *>(parameter);
+  addRelayHookThread(*list, hwnd);
+  return TRUE;
+}
+
+static BOOL CALLBACK enumRelayTopWindows(HWND hwnd, LPARAM parameter)
+{
+  auto *list = reinterpret_cast<RelayHookThreadList *>(parameter);
+  addRelayHookThread(*list, hwnd);
+  EnumChildWindows(hwnd, enumRelayChildWindows, parameter);
+  return TRUE;
 }
 
 static LRESULT CALLBACK RelayHandshakeHookProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -58,7 +85,15 @@ static LRESULT CALLBACK RelayHandshakeHookProc(int nCode, WPARAM wParam, LPARAM 
             static_cast<uint32_t>(call->wParam),
             static_cast<uint32_t>(call->lParam)))
       {
-        acknowledgeRelayThread(call->hwnd, call->wParam, "WH_CALLWNDPROC");
+        if (g_relayAckMsg == 0)
+          g_relayAckMsg = RegisterWindowMessageA("UWM_REMIX_BRIDGE_INPUT_RELAY_ACK_MSG");
+
+        const BOOL posted = g_relayAckMsg != 0 && PostThreadMessageW(
+          static_cast<DWORD>(call->wParam), g_relayAckMsg, 1, 0);
+
+        Logger::info(format_string(
+          "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hwnd=%p worker=%lu posted=%d",
+          call->hwnd, static_cast<unsigned long>(call->wParam), posted ? 1 : 0));
       }
     }
     else if (call->message == g_relayUiActiveMsg)
@@ -70,56 +105,55 @@ static LRESULT CALLBACK RelayHandshakeHookProc(int nCode, WPARAM wParam, LPARAM 
     }
   }
 
-  return CallNextHookEx(g_relayHandshakeHook, nCode, wParam, lParam);
+  return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-static void ensureRelayHandshakeHook(HWND hwnd)
+static void ensureRelayHandshakeHooksForProcess(HWND hwnd)
 {
   DWORD processId = 0;
-  const DWORD threadId = GetWindowThreadProcessId(hwnd, &processId);
-  if (processId != GetCurrentProcessId() || threadId == 0)
+  const DWORD windowThread = GetWindowThreadProcessId(hwnd, &processId);
+  if (processId != GetCurrentProcessId() || windowThread == 0)
     return;
 
   g_relayHandshakeMsg = RegisterWindowMessageA("UWM_REMIX_BRIDGE_REGISTER_THREADPROC_MSG");
   g_relayAckMsg = RegisterWindowMessageA("UWM_REMIX_BRIDGE_INPUT_RELAY_ACK_MSG");
   g_relayUiActiveMsg = RegisterWindowMessageA("UWM_REMIX_UIACTIVE_MSG");
 
-  if (g_relayHandshakeHook && g_relayHandshakeHookThread == threadId)
-    return;
+  RelayHookThreadList list = { processId, {} };
+  addRelayHookThread(list, hwnd);
+  EnumWindows(enumRelayTopWindows, reinterpret_cast<LPARAM>(&list));
 
-  if (g_relayHandshakeHook)
+  for (const DWORD threadId : list.threadIds)
   {
-    UnhookWindowsHookEx(g_relayHandshakeHook);
-    g_relayHandshakeHook = nullptr;
-    g_relayHandshakeHookThread = 0;
-  }
+    if (g_relayHandshakeHooks.find(threadId) != g_relayHandshakeHooks.end())
+      continue;
 
-  // A thread-specific hook in this process can use a null module handle.
-  g_relayHandshakeHook = SetWindowsHookExA(
-    WH_CALLWNDPROC, RelayHandshakeHookProc, nullptr, threadId);
+    // A thread-specific hook in this process can use a null module handle.
+    HHOOK hook = SetWindowsHookExA(
+      WH_CALLWNDPROC, RelayHandshakeHookProc, nullptr, threadId);
 
-  if (g_relayHandshakeHook)
-  {
-    g_relayHandshakeHookThread = threadId;
-    Logger::info(format_string(
-      "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hook installed hwnd=%p thread=%lu",
-      hwnd, static_cast<unsigned long>(threadId)));
-  }
-  else
-  {
-    Logger::warn(format_string(
-      "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hook install failed hwnd=%p thread=%lu error=%lu",
-      hwnd, static_cast<unsigned long>(threadId), GetLastError()));
+    if (hook)
+    {
+      g_relayHandshakeHooks.emplace(threadId, hook);
+      Logger::info(format_string(
+        "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hook installed thread=%lu",
+        static_cast<unsigned long>(threadId)));
+    }
+    else
+    {
+      Logger::warn(format_string(
+        "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hook install failed thread=%lu error=%lu",
+        static_cast<unsigned long>(threadId), GetLastError()));
+    }
   }
 }
 
-static void removeRelayHandshakeHook()
+static void removeRelayHandshakeHooks()
 {
-  if (g_relayHandshakeHook)
-    UnhookWindowsHookEx(g_relayHandshakeHook);
+  for (const auto &entry : g_relayHandshakeHooks)
+    UnhookWindowsHookEx(entry.second);
 
-  g_relayHandshakeHook = nullptr;
-  g_relayHandshakeHookThread = 0;
+  g_relayHandshakeHooks.clear();
 }
 '''
     if window.count(anchor) != 1:
@@ -127,22 +161,28 @@ static void removeRelayHandshakeHook()
     window = window.replace(anchor, anchor + helper, 1)
 
     set_anchor = "  DInputSetDefaultWindow(hwnd);\n"
-    set_replacement = set_anchor + "  ensureRelayHandshakeHook(hwnd);\n"
+    set_replacement = set_anchor + "  ensureRelayHandshakeHooksForProcess(hwnd);\n"
     if window.count(set_anchor) != 1:
         raise SystemExit("could not find WndProc::set DirectInput anchor")
     window = window.replace(set_anchor, set_replacement, 1)
 
     terminate_anchor = "bool terminate() {\n"
-    terminate_replacement = terminate_anchor + "  removeRelayHandshakeHook();\n"
+    terminate_replacement = terminate_anchor + "  removeRelayHandshakeHooks();\n"
     if window.count(terminate_anchor) != 1:
         raise SystemExit("could not find WndProc::terminate anchor")
     window = window.replace(terminate_anchor, terminate_replacement, 1)
 
-    # Keep the ordinary WndProc path as a second way to acknowledge the relay.
     msg_anchor = "  if (gpRemixMessageChannel->onMessage(msg, wParam, lParam)) {\n"
     msg_replacement = """  if (gpRemixMessageChannel->onMessage(msg, wParam, lParam)) {
-    if (msg == g_relayHandshakeMsg)
-      acknowledgeRelayThread(hWnd, wParam, "RemixWndProc");
+    if (msg == g_relayHandshakeMsg) {
+      if (g_relayAckMsg == 0)
+        g_relayAckMsg = RegisterWindowMessageA("UWM_REMIX_BRIDGE_INPUT_RELAY_ACK_MSG");
+      const BOOL posted = g_relayAckMsg != 0 && PostThreadMessageW(
+        static_cast<DWORD>(wParam), g_relayAckMsg, 1, 0);
+      Logger::info(format_string(
+        "[M3K-BBRIDGE-RELAY-ACK] RemixWndProc hwnd=%p worker=%lu posted=%d",
+        hWnd, static_cast<unsigned long>(wParam), posted ? 1 : 0));
+    }
 """
     if window.count(msg_anchor) != 1:
         raise SystemExit("could not find remixMsg renderer-channel handler")
@@ -171,8 +211,7 @@ static void removeRelayHandshakeHook()
     window_path.write_text(window, encoding="utf-8", newline="\n")
 
 di = di_path.read_text(encoding="utf-8")
-di_marker = "M3K-BRIDGE-INPUT-TRACE"
-if di_marker not in di:
+if "M3K-BRIDGE-INPUT-TRACE" not in di:
     old = """  static void forwardMessage(const WndMsg& wm) {
     const DeviceType devType =
       (wm.msg >= WM_MOUSEFIRST && wm.msg <= WM_MOUSELAST) ? DeviceType::Mouse : DeviceType::Keyboard;
@@ -265,4 +304,4 @@ for marker, source in (
     if marker not in source:
         raise SystemExit(f"verification failed: {marker}")
 
-print("Applied b-bridge relay handshake acknowledgement, thread hook, and Home/F11 input tracing")
+print("Applied b-bridge relay ACK hooks for all game window threads and Home/F11 input tracing")
