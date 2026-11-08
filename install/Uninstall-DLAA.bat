@@ -70,9 +70,9 @@ function Find-DlaaPreinstallBackup([string]$Game) {
     return $null
 }
 function Get-ReceiptValue([string]$Text,[string]$Key) {
-    $m = [regex]::Match($Text,'(?m)^' + [regex]::Escape($Key) + '=(.*)
+    $m = [regex]::Match($Text, '(?m)^' + [regex]::Escape($Key) + '=(.*)
     New-Item -ItemType Directory -Path $Safety -Force | Out-Null
-    foreach ($name in @('a_gta4-rtx.asi','d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
+    foreach ($name in @('d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
         Copy-Path (Join-Path $Game $name) (Join-Path $Safety $name)
     }
     Copy-Path (Join-Path $Game '.trex') (Join-Path $Safety '.trex')
@@ -258,39 +258,32 @@ function Restore-CompatibilityAsi([string]$Game) {
     if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) { return }
     $text = [IO.File]::ReadAllText($receipt)
     if ((Get-ReceiptValue $text 'CompatibilityAsiManaged') -ne '1') { return }
-    $target = Join-Path $Game 'a_gta4-rtx.asi'
-    $installedHash = Get-ReceiptValue $text 'CompatibilityAsiInstalledHash'
-    $currentHash = ''
-    if (Test-Path -LiteralPath $target -PathType Leaf) {
-        $currentHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
-    }
-    if ($currentHash -and $currentHash -ne $installedHash) {
-        Write-Warning 'a_gta4-rtx.asi changed after setup; preserving the current file rather than overwriting user changes.'
+    if ((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -ne '1') {
+        Write-Host 'No original compatibility ASI existed; keeping the standalone 1.7.3 compatibility fix.' -ForegroundColor DarkGray
         return
     }
-    if ((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -eq '1') {
-        $backupDir = Get-ReceiptValue $text 'CompatibilityAsiBackup'
-        if (-not $backupDir) { Fail 'Original compatibility ASI backup path is missing.' }
-        $rootFull = [IO.Path]::GetFullPath($Game).TrimEnd('\') + '\'
-        $backupFull = [IO.Path]::GetFullPath($backupDir)
-        if (-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)) {
-            Fail 'Compatibility ASI backup path is outside the GTA IV folder.'
+    $target = Join-Path $Game 'a_gta4-rtx.asi'
+    $installedHash = Get-ReceiptValue $text 'CompatibilityAsiInstalledHash'
+    if (Test-Path -LiteralPath $target -PathType Leaf) {
+        $currentHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($currentHash -ne $installedHash) {
+            Write-Warning 'a_gta4-rtx.asi changed after setup; preserving the current file.'
+            return
         }
-        $backupFile = Join-Path $backupFull 'a_gta4-rtx.asi'
-        if (-not (Test-Path -LiteralPath $backupFile -PathType Leaf)) { Fail 'Original a_gta4-rtx.asi backup is missing.' }
-        $originalHash = Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
-        $backupHash = (Get-FileHash -LiteralPath $backupFile -Algorithm SHA256).Hash.ToUpperInvariant()
-        if ($backupHash -ne $originalHash) { Fail 'Original compatibility ASI backup failed its SHA-256 check.' }
-        Copy-Item -LiteralPath $backupFile -Destination $target -Force
-        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) {
-            Fail 'Could not verify the restored original compatibility ASI.'
-        }
-    } elseif ($currentHash -eq $installedHash) {
-        Remove-Item -LiteralPath $target -Force
     }
-    Write-Host 'Restored the pre-setup a_gta4-rtx.asi state.' -ForegroundColor Green
+    $backupDir = Get-ReceiptValue $text 'CompatibilityAsiBackup'
+    if (-not $backupDir) { Fail 'Original compatibility ASI backup path is missing.' }
+    $rootFull = [IO.Path]::GetFullPath($Game).TrimEnd('\') + '\'
+    $backupFull = [IO.Path]::GetFullPath($backupDir)
+    if (-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)) { Fail 'Compatibility ASI backup path is outside the GTA IV folder.' }
+    $backupFile = Join-Path $backupFull 'a_gta4-rtx.asi'
+    if (-not (Test-Path -LiteralPath $backupFile -PathType Leaf)) { Fail 'Original a_gta4-rtx.asi backup is missing.' }
+    $originalHash = Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
+    if ((Get-FileHash -LiteralPath $backupFile -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Original compatibility ASI backup failed its SHA-256 check.' }
+    Copy-Item -LiteralPath $backupFile -Destination $target -Force
+    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Could not verify the restored original compatibility ASI.' }
+    Write-Host 'Restored the pre-setup a_gta4-rtx.asi.' -ForegroundColor Green
 }
-
 function Snapshot-Current([string]$Game) {
     New-Item -ItemType Directory -Path $Safety -Force | Out-Null
     foreach ($name in @('a_gta4-rtx.asi','d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
@@ -310,7 +303,7 @@ function Snapshot-Current([string]$Game) {
 function Restore-Safety([string]$Game) {
     $trex = Join-Path $Game '.trex'
     if (Test-Path -LiteralPath $trex) { Remove-Item -LiteralPath $trex -Recurse -Force -ErrorAction SilentlyContinue }
-    foreach ($name in @('a_gta4-rtx.asi','d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
+    foreach ($name in @('d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
         $dst = Join-Path $Game $name
         if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue }
         Copy-Path (Join-Path $Safety $name) $dst
