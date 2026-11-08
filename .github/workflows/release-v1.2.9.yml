@@ -1,4 +1,4 @@
-name: GTA IV Scaling v1.2.9 Rockstar overlay compatibility
+name: GTA IV Scaling v1.2.9 corrected installer (no RTX Remix ASI)
 on:
   push:
     branches: [maintenance/v1.2.8-nr-installer]
@@ -57,55 +57,33 @@ jobs:
           if ($actual -ne $expected) {throw "Wrong b-bridge client $actual"}
           Write-Host "Pinned client verified from v1.2.8 release artifact: $actual"
 
-      - name: Download and verify upstream GTA IV compatibility mod 1.7.3
+      - name: Generate corrected v1.2.9 package
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory '_upstream' -Force | Out-Null
-          $zip='_upstream/GTAIV-Remix-CompatibilityMod-1.7.3.zip'
-          & curl.exe -L --fail --retry 3 --connect-timeout 20 --silent --show-error -o $zip 'https://github.com/xoxor4d/gta4-rtx/releases/download/v1.7.3/GTAIV-Remix-CompatibilityMod-1.7.3.zip'
-          if ($LASTEXITCODE -ne 0) {throw 'Could not download upstream compatibility mod 1.7.3'}
-          $expected='0482092C0A64083FC5E4233E92656210D71802D2C2D1AAEF83BB01E97D6C778F'
-          $actual=(Get-FileHash $zip -Algorithm SHA256).Hash
-          if ($actual -ne $expected) {throw "Upstream archive SHA-256 mismatch: $actual"}
-          Write-Host "Upstream archive verified: $actual"
-
-      - name: Generate v1.2.9 package and compatibility ASI
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          python tools/release-pin-v129.py --base _base --client _diagnostic/d3d9.dll --compat-archive _upstream/GTAIV-Remix-CompatibilityMod-1.7.3.zip
+          python tools/release-pin-v129.py --base _base --client _diagnostic/d3d9.dll
           if ($LASTEXITCODE -ne 0) {throw "v1.2.9 package generator failed ($LASTEXITCODE)"}
 
-      - name: Validate runtime, ASI architecture, installer scripts and rollback
+      - name: Validate runtime, migration cleanup, installer scripts and rollback
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $runner=[IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action.ps1')
           [void][ScriptBlock]::Create($runner)
-          foreach($token in @('Install-CompatibilityAsi','Write-CompatibilityReceipt','Test-ExistingV129','Test-ExistingV128','CompatibilityAsiHash')){
+          foreach($token in @('Remove-InjectedCompatibilityAsi','Test-ExistingV129','Test-ExistingV128')){
             if(-not $runner.Contains($token)){throw "Runner is missing $token"}
           }
-          if($runner.Contains('__COMPATIBILITY_ASI_SHA256__')){throw 'Compatibility ASI hash placeholder was not replaced'}
+          if($runner.Contains('Install-CompatibilityAsi')){throw 'Runner still installs the RTX Remix ASI'}
           if($runner.Contains('RankFTW/rhi-repo')){throw 'Old NR downloader still installed'}
           $uninstaller=[IO.File]::ReadAllText('.\install\Uninstall-DLAA.bat')
           $marker=$uninstaller.IndexOf('#==POWERSHELL==#')
           if($marker -lt 0){throw 'Uninstaller PowerShell marker missing'}
           [void][ScriptBlock]::Create($uninstaller.Substring($marker+16))
-          foreach($token in @('a_gta4-rtx.asi','Restore-CompatibilityAsi $Game','CompatibilityAsiOriginalHash')){
-            if(-not $uninstaller.Contains($token)){throw "Uninstaller rollback missing $token"}
+          foreach($token in @('a_gta4-rtx.asi','Restore-CompatibilityAsi $Game','Remove-Item -LiteralPath $target -Force')){
+            if(-not $uninstaller.Contains($token)){throw "Uninstaller migration cleanup missing $token"}
           }
-          $asi='./installer/payload/a_gta4-rtx-1.7.3.asi'
-          $asiSha=([IO.File]::ReadAllText('.\installer\payload\a_gta4-rtx-v1.7.3.sha256')).Trim()
-          if((Get-FileHash $asi -Algorithm SHA256).Hash -ne $asiSha){throw 'Compatibility ASI checksum mismatch'}
-          $bytes=[IO.File]::ReadAllBytes($asi)
-          $pe=[BitConverter]::ToInt32($bytes,0x3c)
-          $machine=[BitConverter]::ToUInt16($bytes,$pe+4)
-          if($machine -ne 0x14c){throw ('Compatibility ASI is not 32-bit x86: 0x{0:X4}' -f $machine)}
           $iss=[IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup-v129.iss')
-          foreach($token in @('payload\a_gta4-rtx-1.7.3.asi','ExtractTemporaryFile(''a_gta4-rtx-1.7.3.asi'')','-CompatibilityAsi')){
-            if(-not $iss.Contains($token)){throw "Inno setup missing $token"}
-          }
+          if($iss.Contains('-CompatibilityAsi')){throw 'Inno installer still passes the RTX Remix ASI'}
           [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1'))
           $archive='./installer/payload/GTAIV-Scaling-Runtime-v1.2.9.zip'
           $record=([IO.File]::ReadAllText('.\installer\payload\GTAIV-Scaling-Runtime-v1.2.9.sha256')).Trim()
@@ -116,7 +94,7 @@ jobs:
           foreach($required in @('eliminateRedundantSetterCalls = True','clientStateBatch = True','clientRedundantBypassMask = 1032192')){
             if(-not $cfg.Contains($required)){throw "Bridge pin missing: $required"}
           }
-          Write-Host "All v1.2.9 runtime, compatibility ASI, installer and rollback checks passed"
+          Write-Host "All corrected v1.2.9 runtime, ASI cleanup, installer and rollback checks passed"
 
       - name: Install Inno Setup compiler
         shell: pwsh
@@ -141,15 +119,13 @@ jobs:
       - name: Publish build artifacts for audit and download
         uses: actions/upload-artifact@v4
         with:
-          name: GTAIV-Scaling-v1.2.9-social-club-fix
+          name: GTAIV-Scaling-v1.2.9-corrected-no-rtx-asi
           path: |
             installer/out/GTAIV-Scaling-Setup-v1.2.9.exe
             installer/out/GTAIV-Scaling-Setup-v1.2.9.sha256
             installer/payload/GTAIV-Scaling-Runtime-v1.2.9.zip
             installer/payload/GTAIV-Scaling-Runtime-v1.2.9.sha256
             installer/payload/dlss5-feed-v1.2.9.sha256
-            installer/payload/a_gta4-rtx-1.7.3.asi
-            installer/payload/a_gta4-rtx-v1.7.3.sha256
             RELEASE-v1.2.9.md
           retention-days: 90
 
@@ -166,9 +142,7 @@ jobs:
             '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.9.zip',
             '.\installer\payload\GTAIV-Scaling-Runtime-v1.2.9.sha256',
             '.\installer\payload\dlss5-feed-v1.2.9.sha256',
-            '.\installer\payload\a_gta4-rtx-1.7.3.asi',
-            '.\installer\payload\a_gta4-rtx-v1.7.3.sha256'
           )
-          gh release create v1.2.9 @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title 'GTA IV Scaling v1.2.9 - Rockstar overlay compatibility' --notes-file '.\RELEASE-v1.2.9.md' --latest
+          gh release create v1.2.9 @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title 'GTA IV Scaling v1.2.9 - corrected installer without RTX Remix ASI' --notes-file '.\RELEASE-v1.2.9.md' --latest
           if ($LASTEXITCODE -ne 0) {throw 'Release publication failed'}
-          Write-Host 'Published v1.2.9 with the upstream Social Club overlay compatibility fix'
+          Write-Host 'Published corrected v1.2.9 without the incompatible standalone RTX Remix ASI'
