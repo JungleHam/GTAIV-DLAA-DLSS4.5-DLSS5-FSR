@@ -1,0 +1,130 @@
+name: GTA IV Scaling v1.2.9 corrected installer (no RTX Remix ASI)
+on:
+  push:
+    branches: [maintenance/v1.2.8-nr-installer]
+    paths:
+      - '.github/workflows/release-v1.2.9.yml'
+      - 'installer/**'
+      - 'install/Uninstall-DLAA.bat'
+      - 'tools/release-pin-v129.py'
+      - 'RELEASE-v1.2.9.md'
+  pull_request:
+    paths:
+      - '.github/workflows/release-v1.2.9.yml'
+      - 'installer/**'
+      - 'install/Uninstall-DLAA.bat'
+      - 'tools/release-pin-v129.py'
+      - 'RELEASE-v1.2.9.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-validate-publish:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Reuse pinned v1.2.6 foundation inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_base' -Force | Out-Null
+          gh run download 39115183838 --repo "$env:GITHUB_REPOSITORY" -n 'GTAIV-Scaling-v1.2.6-release-prep' -D '_base'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve approved v1.2.6 source artifacts'}
+          if (-not (Test-Path '_base/installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip')) {throw 'Missing original runtime'}
+
+      - name: Extract exact hardware-tested 32-bit bridge client from v1.2.8 release artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory '_v128' -Force | Out-Null
+          New-Item -ItemType Directory '_diagnostic' -Force | Out-Null
+          gh run download 39142082599 --repo "$env:GITHUB_REPOSITORY" -n 'GTAIV-Scaling-v1.2.8-pinned-release' -D '_v128'
+          if ($LASTEXITCODE -ne 0) {throw 'Cannot retrieve the successful v1.2.8 release artifact'}
+          $runtimeZip='_v128/installer/payload/GTAIV-Scaling-Runtime-v1.2.8.zip'
+          if (-not (Test-Path $runtimeZip)) {throw 'v1.2.8 runtime archive missing from release artifact'}
+          Expand-Archive -LiteralPath $runtimeZip -DestinationPath '_v128/runtime' -Force
+          Copy-Item '_v128/runtime/d3d9.dll' '_diagnostic/d3d9.dll' -Force
+          $expected='B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF'
+          $actual=(Get-FileHash '_diagnostic/d3d9.dll' -Algorithm SHA256).Hash
+          if ($actual -ne $expected) {throw "Wrong b-bridge client $actual"}
+          Write-Host "Pinned client verified from v1.2.8 release artifact: $actual"
+
+      - name: Generate corrected v1.2.9 package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tools/release-pin-v129.py --base _base --client _diagnostic/d3d9.dll
+          if ($LASTEXITCODE -ne 0) {throw "v1.2.9 package generator failed ($LASTEXITCODE)"}
+
+      - name: Validate runtime, migration cleanup, installer scripts and rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runner=[IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action.ps1')
+          [void][ScriptBlock]::Create($runner)
+          foreach($token in @('Remove-InjectedCompatibilityAsi','Test-ExistingV129','Test-ExistingV128')){
+            if(-not $runner.Contains($token)){throw "Runner is missing $token"}
+          }
+          if($runner.Contains('Install-CompatibilityAsi')){throw 'Runner still installs the RTX Remix ASI'}
+          if($runner.Contains('RankFTW/rhi-repo')){throw 'Old NR downloader still installed'}
+          $uninstaller=[IO.File]::ReadAllText('.\install\Uninstall-DLAA.bat')
+          $marker=$uninstaller.IndexOf('#==POWERSHELL==#')
+          if($marker -lt 0){throw 'Uninstaller PowerShell marker missing'}
+          [void][ScriptBlock]::Create($uninstaller.Substring($marker+16))
+          foreach($token in @('a_gta4-rtx.asi','Restore-CompatibilityAsi $Game','Remove-Item -LiteralPath $target -Force')){
+            if(-not $uninstaller.Contains($token)){throw "Uninstaller migration cleanup missing $token"}
+          }
+          $iss=[IO.File]::ReadAllText('.\installer\GTAIV-Scaling-Setup-v129.iss')
+          if($iss.Contains('-CompatibilityAsi')){throw 'Inno installer still passes the RTX Remix ASI'}
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1'))
+          $archive='./installer/payload/GTAIV-Scaling-Runtime-v1.2.9.zip'
+          $record=([IO.File]::ReadAllText('.\installer\payload\GTAIV-Scaling-Runtime-v1.2.9.sha256')).Trim()
+          if((Get-FileHash $archive -Algorithm SHA256).Hash -ne $record){throw 'Runtime integrity mismatch'}
+          $dll=(Get-FileHash '_runtime127/d3d9.dll' -Algorithm SHA256).Hash
+          if($dll -ne 'B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF'){throw 'Pinned renderer client mismatch'}
+          $cfg=[IO.File]::ReadAllText('_runtime127/bridge.conf')
+          foreach($required in @('eliminateRedundantSetterCalls = True','clientStateBatch = True','clientRedundantBypassMask = 1032192')){
+            if(-not $cfg.Contains($required)){throw "Bridge pin missing: $required"}
+          }
+          Write-Host "All corrected v1.2.9 runtime, ASI cleanup, installer and rollback checks passed"
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup dependency unavailable'}
+
+      - name: Compile v1.2.9 complete Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $compiler=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {throw 'ISCC missing'}
+          & $compiler .\installer\GTAIV-Scaling-Setup-v129.iss
+          if ($LASTEXITCODE -ne 0) {throw 'Inno Setup compilation failed'}
+          $exe='.\installer\out\GTAIV-Scaling-Setup-v1.2.9.exe'
+          if (-not (Test-Path $exe)) {throw 'v1.2.9 installer EXE missing'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash
+          $sha | Set-Content .\installer\out\GTAIV-Scaling-Setup-v1.2.9.sha256 -Encoding ASCII
+          Write-Host "Installer SHA256: $sha"
+
+      - name: Publish build artifacts for audit and download
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-Scaling-v1.2.9-corrected-no-rtx-asi
+          path: |
+            installer/out/GTAIV-Scaling-Setup-v1.2.9.exe
+            installer/out/GTAIV-Scaling-Setup-v1.2.9.sha256
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.9.zip
+            installer/payload/GTAIV-Scaling-Runtime-v1.2.9.sha256
+            installer/payload/dlss5-feed-v1.2.9.sha256
+            RELEASE-v1.2.9.md
+          retention-days: 90
