@@ -57,8 +57,8 @@ if count != 1:
     raise SystemExit(f"BindViewportAndScissor audit anchor count={count}, expected 1")
 text = text.replace(anchor, replacement, 1)
 
-if text.count(marker) != 1:
-    raise SystemExit("viewport/RT audit marker verification failed")
+if "[M3K-VIEWPORT-RT]" not in text:
+    raise SystemExit("viewport/RT audit log marker verification failed")
 
 source.write_text(text, encoding="utf-8", newline="\n")
 print("Applied read-only M3K viewport/active-render-target audit")
