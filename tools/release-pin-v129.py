@@ -190,7 +190,7 @@ def main():
     compat_asi = payload/"a_gta4-rtx-1.7.3.asi"
     compat_asi.write_bytes(compat_bytes)
     compatibility_hash = sha(compat_bytes)
-    (payload/"a_gta4-rtx-v1.7.3.sha256").write_text(compatibility_hash+"\\n",encoding="ascii")
+    (payload/"a_gta4-rtx-v1.7.3.sha256").write_text(compatibility_hash+"\n",encoding="ascii")
     out_zip=payload/"GTAIV-Scaling-Runtime-v1.2.9.zip"
     with zipfile.ZipFile(out_zip,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for file in sorted(src.rglob("*")):
@@ -242,7 +242,7 @@ def main():
         runner=replace_once(runner,key,value,f"runner {key}")
     (payload/"Run-Scaling-Action.ps1").write_text(runner,encoding="utf-8")
 
-    iss_path=repo/"installer/GTAIV-Scaling-Setup-v128.iss"
+    iss_path=repo/"installer/GTAIV-Scaling-Setup-v129.iss"
     iss=iss_path.read_text(encoding="utf-8")
     need(iss.count("1.2.6")>=8,"Unexpected Inno source version")
     iss=iss.replace("1.2.6","1.2.9")
