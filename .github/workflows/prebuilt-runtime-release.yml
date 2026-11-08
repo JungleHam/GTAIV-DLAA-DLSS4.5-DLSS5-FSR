@@ -183,8 +183,12 @@ jobs:
           python .\_project\tools\m3k-nr\a3-s2-bbridge-coherent-draw-jitter.py .\_bbridge
           python .\install\Public-BBridge-Jitter-Viewport-Tolerance.py .\_bbridge
           python .\install\Public-BBridge-DirectInput-ScanCode-Fix.py .\_bbridge
+          python .\install\Public-BBridge-Input-Relay-Fix.py .\_bbridge
           $diSource = [IO.File]::ReadAllText('.\_bbridge\src\client\di_hook.cpp')
+          $windowSource = [IO.File]::ReadAllText('.\_bbridge\src\client\window.cpp')
           if (-not $diSource.Contains('M3K-BRIDGE-DIK-EXTENDED-KEYS')) { throw 'DirectInput extended-key patch marker missing' }
+          if (-not $diSource.Contains('M3K-BRIDGE-INPUT-TRACE')) { throw 'DirectInput relay trace marker missing' }
+          if (-not $windowSource.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { throw 'Verified relay handshake hook marker missing' }
           git -C _bbridge diff --check
           python -m pip install --disable-pip-version-check meson==0.64.1 ninja==1.11.1.1
           $bbridgeRoot = (Resolve-Path .\_bbridge).Path
