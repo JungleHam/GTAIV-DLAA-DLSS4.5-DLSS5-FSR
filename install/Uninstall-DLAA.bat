@@ -83,28 +83,29 @@ function Restore-CompatibilityAsi([string]$Game) {
     if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) { return }
     $text = [IO.File]::ReadAllText($receipt)
     if ((Get-ReceiptValue $text 'CompatibilityAsiManaged') -ne '1') { return }
-    if ((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -ne '1') {
-        Write-Host 'No original compatibility ASI existed; keeping the 1.7.3 compatibility fix.' -ForegroundColor DarkGray
-        return
-    }
     $target = Join-Path $Game 'a_gta4-rtx.asi'
     $installedHash = Get-ReceiptValue $text 'CompatibilityAsiInstalledHash'
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         $currentHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
         if ($currentHash -ne $installedHash) { Write-Warning 'a_gta4-rtx.asi changed after setup; preserving the current file.'; return }
     }
-    $backupDir = Get-ReceiptValue $text 'CompatibilityAsiBackup'
-    if (-not $backupDir) { Fail 'Original compatibility ASI backup path is missing.' }
-    $rootFull = [IO.Path]::GetFullPath($Game).TrimEnd('\') + '\'
-    $backupFull = [IO.Path]::GetFullPath($backupDir)
-    if (-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)) { Fail 'Compatibility ASI backup path is outside the GTA IV folder.' }
-    $backupFile = Join-Path $backupFull 'a_gta4-rtx.asi'
-    if (-not (Test-Path -LiteralPath $backupFile -PathType Leaf)) { Fail 'Original a_gta4-rtx.asi backup is missing.' }
-    $originalHash = Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
-    if ((Get-FileHash -LiteralPath $backupFile -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Original compatibility ASI backup failed its SHA-256 check.' }
-    Copy-Item -LiteralPath $backupFile -Destination $target -Force
-    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Could not verify the restored original compatibility ASI.' }
-    Write-Host 'Restored the pre-setup a_gta4-rtx.asi.' -ForegroundColor Green
+    if ((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -eq '1') {
+        $backupDir = Get-ReceiptValue $text 'CompatibilityAsiBackup'
+        if (-not $backupDir) { Fail 'Original compatibility ASI backup path is missing.' }
+        $rootFull = [IO.Path]::GetFullPath($Game).TrimEnd('\') + '\'
+        $backupFull = [IO.Path]::GetFullPath($backupDir)
+        if (-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)) { Fail 'Compatibility ASI backup path is outside the GTA IV folder.' }
+        $backupFile = Join-Path $backupFull 'a_gta4-rtx.asi'
+        if (-not (Test-Path -LiteralPath $backupFile -PathType Leaf)) { Fail 'Original a_gta4-rtx.asi backup is missing.' }
+        $originalHash = Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
+        if ((Get-FileHash -LiteralPath $backupFile -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Original compatibility ASI backup failed its SHA-256 check.' }
+        Copy-Item -LiteralPath $backupFile -Destination $target -Force
+        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash) { Fail 'Could not verify the restored original compatibility ASI.' }
+        Write-Host 'Restored the pre-setup a_gta4-rtx.asi.' -ForegroundColor Green
+    } elseif (Test-Path -LiteralPath $target -PathType Leaf) {
+        Remove-Item -LiteralPath $target -Force
+        Write-Host 'Removed the RTX Remix ASI incorrectly added by v1.2.9.' -ForegroundColor Green
+    }
 }
 function Snapshot-Current([string]$Game) {
     New-Item -ItemType Directory -Path $Safety -Force | Out-Null
