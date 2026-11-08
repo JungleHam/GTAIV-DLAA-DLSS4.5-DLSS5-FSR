@@ -98,10 +98,29 @@ static LRESULT CALLBACK RelayHandshakeHookProc(int nCode, WPARAM wParam, LPARAM 
     }
     else if (call->message == g_relayUiActiveMsg)
     {
+      const bool uiWasActive = RemixState::isUIActive();
       gpRemixMessageChannel->onMessage(
         call->message,
         static_cast<uint32_t>(call->wParam),
         static_cast<uint32_t>(call->lParam));
+
+      // This hook may be the only receiver if another component replaced
+      // RemixWndProc. Preserve the same activation side effects normally
+      // performed by remixMsg so the game does not keep stale modifier state.
+      if (!uiWasActive && RemixState::isUIActive())
+      {
+        auto unstick = [hWnd = call->hwnd](uint32_t vk) {
+          if (g_gameWndProc)
+            CallWindowProc(g_gameWndProc, hWnd, WM_KEYUP, vk,
+              ((KF_REPEAT + KF_UP + MapVirtualKeyA(vk, MAPVK_VK_TO_VSC)) << 16) + 1);
+        };
+
+        unstick(VK_CONTROL);
+        unstick(VK_SHIFT);
+        unstick(VK_INSERT);
+        InputWinHooksReattach();
+        Logger::info("[M3K-BBRIDGE-RELAY-ACK-HOOK] UI-active transition handled by CALLWNDPROC hook.");
+      }
     }
   }
 
