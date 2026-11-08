@@ -371,7 +371,7 @@ begin
       ' -RuntimePackage ' + QuoteArg(ExpandConstant('{tmp}\GTAIV-Scaling-Runtime-v1.2.6.zip')) +
       ' -ReShadePatch ' + QuoteArg(ExpandConstant('{tmp}\ReShade64-bbridge.dll')) +
       ' -ResultFile ' + QuoteArg(ResultPath) +
-      ' -CompatibilityAsi ' + QuoteArg(ExpandConstant('{tmp}\\a_gta4-rtx-1.7.3.asi'));
+      ' -CompatibilityAsi ' + QuoteArg(ExpandConstant('{tmp}\a_gta4-rtx-1.7.3.asi'));
 
     if (SelectedAction = 0) and (not FoundationPresent) and FileExists(ReShadePage.Values[0]) then
       Args := Args + ' -ReShadeSetup ' + QuoteArg(ReShadePage.Values[0]);
