@@ -208,6 +208,9 @@ function Expand-AndVerifyRuntime([string]$Package) {
 
     $client = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $destination 'd3d9.dll')))
     if (-not $client.Contains('[M3K-DI-KEY]')) { Fail 'Test runtime d3d9.dll does not contain the DirectInput fix marker.' }
+    if (-not $client.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { Fail 'Test runtime d3d9.dll does not contain the verified b-bridge relay hook.' }
+    if (-not $client.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Test runtime d3d9.dll does not contain the Home/F11 forwarding trace.' }
+    if (-not $client.Contains('M3K-STEAM-INPUT')) { Fail 'Test runtime d3d9.dll does not contain the Steam F11 input trace.' }
     $presenter = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $destination 'd3d9vk_x64.dll')))
     if (-not $presenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Test runtime presenter does not contain the viewport diagnostic marker.' }
     return $destination
@@ -283,6 +286,9 @@ function Install-TestRuntime([string]$Root, [string]$Package) {
         $installedClient = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $Root 'd3d9.dll')))
         $installedPresenter = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $Root '.trex\d3d9vk_x64.dll')))
         if (-not $installedClient.Contains('[M3K-DI-KEY]')) { Fail 'Installed client verification failed.' }
+        if (-not $installedClient.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { Fail 'Installed b-bridge relay hook verification failed.' }
+        if (-not $installedClient.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Installed Home/F11 forwarding trace verification failed.' }
+        if (-not $installedClient.Contains('M3K-STEAM-INPUT')) { Fail 'Installed Steam F11 input trace verification failed.' }
         if (-not $installedPresenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Installed presenter verification failed.' }
 
         Set-ReceiptValues $receipt $backup
