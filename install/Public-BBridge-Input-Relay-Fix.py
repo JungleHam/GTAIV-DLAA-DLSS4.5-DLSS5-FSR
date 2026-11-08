@@ -136,7 +136,7 @@ static void ensureRelayHandshakeHooksForProcess(HWND hwnd)
     {
       g_relayHandshakeHooks.emplace(threadId, hook);
       Logger::info(format_string(
-        "[M3K-BBRIDGE-RELAY-ACK] WH_CALLWNDPROC hook installed thread=%lu",
+        "[M3K-BBRIDGE-RELAY-ACK-HOOK] WH_CALLWNDPROC hook installed thread=%lu",
         static_cast<unsigned long>(threadId)));
     }
     else
