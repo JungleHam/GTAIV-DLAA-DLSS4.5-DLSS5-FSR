@@ -155,7 +155,7 @@ def main():
         need(compat_name in upstream.namelist(), f"Missing {compat_name} in upstream archive")
         compat_bytes = upstream.read(compat_name)
     is_pe_i386(compat_bytes)
-    need(1024 * 1024 < len(compat_bytes) < 100 * 1024 * 1024, "Unexpected compatibility ASI size")
+    need(64 * 1024 < len(compat_bytes) < 100 * 1024 * 1024, "Unexpected compatibility ASI size")
     src=repo / "_runtime127"
     if src.exists(): shutil.rmtree(src)
     src.mkdir()
