@@ -503,7 +503,6 @@ function Remove-FusionFix([string]$Root){
     }
 }
 function Remove-Scaling([string]$Root,[bool]$KeepFusionFix){
-    Restore-CompatibilityAsi $Root
     $uninstall=Join-Path $PSScriptRoot 'Uninstall-DLAA.bat'
     Invoke-Bat $uninstall $Root -NonInteractive
     Remove-ScalingLeftovers $Root
