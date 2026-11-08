@@ -1,0 +1,85 @@
+name: Build GTA IV Scaling 1.2.10 test installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ fix/v1.2.10-viewport-input ]
+    paths:
+      - 'installer/GTAIV-Scaling-Test-Setup.iss'
+      - 'installer/Install-Test-Runtime.ps1'
+      - '.github/workflows/build-v1210-test-installer.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-test-installer:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: \${{ github.token }}
+    steps:
+      - name: Check out test branch
+        uses: actions/checkout@v4
+
+      - name: Download and verify the successful test runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh run download 42529493460 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the successful cleaned-prebuilt-runtime artifact.' }
+
+          $runtime = '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.zip'
+          $hashFile = '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.sha256'
+          if (-not (Test-Path -LiteralPath $runtime)) { throw 'The runtime ZIP is missing from the workflow artifact.' }
+          if (-not (Test-Path -LiteralPath $hashFile)) { throw 'The runtime SHA-256 file is missing from the workflow artifact.' }
+
+          $expected = (Get-Content -LiteralPath $hashFile -Raw).Trim().Split(' ')[0].ToUpperInvariant()
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtime).Hash.ToUpperInvariant()
+          if ($actual -ne $expected) { throw "Runtime ZIP checksum mismatch. Expected $expected, got $actual." }
+
+          New-Item -ItemType Directory -Path '.\installer\test-payload' -Force | Out-Null
+          Copy-Item -LiteralPath $runtime -Destination '.\installer\test-payload\GTAIV-DLSS-Full-Runtime.zip' -Force
+          Write-Host "Verified runtime SHA256: $actual"
+
+      - name: Validate PowerShell action script
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = [IO.File]::ReadAllText('.\installer\Install-Test-Runtime.ps1')
+          [void][ScriptBlock]::Create($script)
+          if (-not $script.Contains('[M3K-DI-KEY]')) { throw 'Client marker validation missing.' }
+          if (-not $script.Contains('[M3K-VIEWPORT-RT]')) { throw 'Presenter marker validation missing.' }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+
+      - name: Compile self-contained test installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+          $iscc = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc)) { throw 'ISCC.exe was not found.' }
+          New-Item -ItemType Directory -Path '.\installer\out-test' -Force | Out-Null
+          & $iscc '.\installer\GTAIV-Scaling-Test-Setup.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed: $LASTEXITCODE" }
+
+          $exe = '.\installer\out-test\GTAIV-Scaling-1.2.10-Test-Setup.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw 'The test installer EXE was not created.' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToUpperInvariant()
+          $hash | Set-Content '.\installer\out-test\GTAIV-Scaling-1.2.10-Test-Setup.sha256' -Encoding ASCII
+          Write-Host "Installer SHA256: $hash"
+
+      - name: Upload test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAIV-Scaling-1.2.10-Test-Installer
+          path: |
+            installer/out-test/GTAIV-Scaling-1.2.10-Test-Setup.exe
+            installer/out-test/GTAIV-Scaling-1.2.10-Test-Setup.sha256
+          retention-days: 90
