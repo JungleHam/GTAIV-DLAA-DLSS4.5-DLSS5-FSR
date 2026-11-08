@@ -8,6 +8,7 @@ on:
       - '.github/workflows/prebuilt-runtime-release.yml'
       - 'install/Public-DXVK-Viewport-RT-Audit.py'
       - 'install/Public-BBridge-DirectInput-ScanCode-Fix.py'
+      - 'install/Public-BBridge-Input-Relay-Fix.py'
 
 permissions:
   contents: read
@@ -203,6 +204,9 @@ jobs:
           if (-not (Test-Path -LiteralPath $clientDll)) { throw "Built b-bridge x86 client DLL missing: $clientDll" }
           $clientAscii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($clientDll))
           if (-not $clientAscii.Contains('[M3K-DI-KEY]')) { throw 'Built b-bridge client DLL is missing the extended-key forwarding marker' }
+          if (-not $clientAscii.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { throw 'Built b-bridge client DLL is missing the verified relay handshake hook marker' }
+          if (-not $clientAscii.Contains('M3K-BRIDGE-INPUT-TRACE')) { throw 'Built b-bridge client DLL is missing the Home/F11 forwarding trace marker' }
+          if (-not $clientAscii.Contains('M3K-STEAM-INPUT')) { throw 'Built b-bridge client DLL is missing the Steam F11 input trace marker' }
           SetupVS -Platform x64
           meson setup --buildtype release --backend ninja _prebuilt64 --debug
           Copy-Item .\Directory.Build.Props .\_prebuilt64 -Force
