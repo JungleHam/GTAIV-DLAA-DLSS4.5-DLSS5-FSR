@@ -399,7 +399,6 @@ function Install-Scaling([string]$Root){
     if(-not(Get-Ini $ini 'M3K' 'LastNRMode')){Set-Ini $ini 'M3K' 'LastNRMode' '0'}
     if(-not(Get-Ini $ini 'M3K' 'Mode')){Set-Ini $ini 'M3K' 'Mode' '0'}
 
-    $compatibilityAsi=Install-CompatibilityAsi $Root
     $receipt=@(
         'GTA IV Scaling',
         "Version=$Version",
@@ -411,6 +410,7 @@ function Install-Scaling([string]$Root){
         "Pre123Backup=$backup"
     )
     [IO.File]::WriteAllLines((Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'),$receipt,[Text.UTF8Encoding]::new($false))
+    $compatibilityAsi=Install-CompatibilityAsi $Root
     Write-CompatibilityReceipt $Root $compatibilityAsi
     Write-Host ''
     if($NrMode -ne 'skip' -and $gpu.Series-in@(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage}
