@@ -522,12 +522,20 @@ function Install-CompatibilityAsi([string]$Root){
             Fail 'Could not verify the backup of the existing a_gta4-rtx.asi. The original file was not replaced.'
         }
     }
+    $info=[pscustomobject]@{
+        Managed='1'
+        BackupPath=$backup
+        OriginalPresent=$(if($originalPresent){'1'}else{'0'})
+        OriginalHash=$originalHash
+        InstalledHash=$CompatibilityAsiHash
+    }
     $temporary=$target+'.gtaiv-scaling-new'
     try{
         Copy-Item -LiteralPath $CompatibilityAsi -Destination $temporary -Force
         Assert-SHA256 $temporary $CompatibilityAsiHash 'staged GTA IV compatibility ASI 1.7.3'
         Move-Item -LiteralPath $temporary -Destination $target -Force
         Assert-SHA256 $target $CompatibilityAsiHash 'installed GTA IV compatibility ASI 1.7.3'
+        Write-CompatibilityReceipt $Root $info
     }catch{
         Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
         if($originalPresent){Copy-Item -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Destination $target -Force}
@@ -535,13 +543,7 @@ function Install-CompatibilityAsi([string]$Root){
         throw
     }
     Write-Host 'Installed upstream GTA IV compatibility mod 1.7.3 (Social Club overlay device fix).' -ForegroundColor Green
-    return [pscustomobject]@{
-        Managed='1'
-        BackupPath=$backup
-        OriginalPresent=$(if($originalPresent){'1'}else{'0'})
-        OriginalHash=$originalHash
-        InstalledHash=$CompatibilityAsiHash
-    }
+    return $info
 }
 function Write-CompatibilityReceipt([string]$Root,[object]$Info){
     $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
@@ -574,7 +576,9 @@ function Write-CompatibilityReceipt([string]$Root,[object]$Info){
     foreach($key in $values.Keys){
         if(-not $seen.ContainsKey($key)){[void]$lines.Add($key+'='+$values[$key])}
     }
-    [IO.File]::WriteAllLines($receipt,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
+    $temporary=$receipt+'.gtaiv-scaling-receipt.tmp'
+    [IO.File]::WriteAllLines($temporary,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $temporary -Destination $receipt -Force
 }
 function Restore-CompatibilityAsi([string]$Root){
     $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
