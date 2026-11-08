@@ -9,7 +9,6 @@ import hashlib
 import io
 import re
 import shutil
-import struct
 import zipfile
 from pathlib import Path
 
@@ -18,7 +17,6 @@ BASE_RUNTIME_SHA = "44960556C6643D48158B57F8B23659E152879FFD2B5591C3C8E323ACA91D
 TESTED_CLIENT_SHA = "B2FE0313971080A7D5D011BC047F66A8E540FC55B9C279A81A3A9CB9D4EEFDDF"
 FEEDER_SHA = "C8C7D555F6E1BFBA939560DB3F641BA64FC480D07E9A2C193E0CD468FC026550"
 RESH_PATCH_SHA = "D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510"
-UPSTREAM_COMPAT_ZIP_SHA = "0482092C0A64083FC5E4233E92656210D71802D2C2D1AAEF83BB01E97D6C778F"
 
 def sha(data):
     return hashlib.sha256(data).hexdigest().upper()
@@ -139,96 +137,41 @@ function Test-ExistingV129([string]$Root){
     return $true
 }
 function Get-ReceiptValue([string]$Text,[string]$Key){
-    $m=[regex]::Match($Text,'(?m)^'+[regex]::Escape($Key)+'=(.*)$')
-    if($m.Success){return $m.Groups[1].Value.Trim()}
+    foreach($line in ($Text -split [char]10)){
+        $line=$line.TrimEnd([char]13)
+        if($line.StartsWith($Key+'=',[StringComparison]::OrdinalIgnoreCase)){return $line.Substring($Key.Length+1).Trim()}
+    }
     return ''
 }
-function Install-CompatibilityAsi([string]$Root){
-    if(-not $CompatibilityAsi -or -not(Test-Path -LiteralPath $CompatibilityAsi -PathType Leaf)){
-        Fail 'The upstream GTA IV 1.7.3 compatibility ASI is missing from setup.'
-    }
-    Assert-SHA256 $CompatibilityAsi $CompatibilityAsiHash 'GTA IV compatibility mod 1.7.3'
+function Remove-InjectedCompatibilityAsi([string]$Root){
+    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
+    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){return}
+    $text=[IO.File]::ReadAllText($receipt)
+    if((Get-ReceiptValue $text 'CompatibilityAsiManaged') -ne '1'){return}
     $target=Join-Path $Root 'a_gta4-rtx.asi'
     $currentHash=''
-    if(Test-Path -LiteralPath $target -PathType Leaf){
-        $currentHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()
-    }
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    $oldText=if(Test-Path -LiteralPath $receipt -PathType Leaf){[IO.File]::ReadAllText($receipt)}else{''}
-    if($currentHash -eq $CompatibilityAsiHash){
-        return [pscustomobject]@{
-            Managed=(Get-ReceiptValue $oldText 'CompatibilityAsiManaged')
-            BackupPath=(Get-ReceiptValue $oldText 'CompatibilityAsiBackup')
-            OriginalPresent=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalPresent')
-            OriginalHash=(Get-ReceiptValue $oldText 'CompatibilityAsiOriginalHash')
-            InstalledHash=$CompatibilityAsiHash
-        }
-    }
-    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE129_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
-    New-Item -ItemType Directory -Path $backup -Force|Out-Null
-    $originalPresent=Test-Path -LiteralPath $target -PathType Leaf
-    $originalHash=''
-    if($originalPresent){
-        $originalHash=$currentHash
-        Copy-Item -LiteralPath $target -Destination (Join-Path $backup 'a_gta4-rtx.asi') -Force
-        if((Get-FileHash -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash){
-            Fail 'Could not verify the backup of the existing a_gta4-rtx.asi. The original file was not replaced.'
-        }
-    }
-    $info=[pscustomobject]@{
-        Managed='1'
-        BackupPath=$backup
-        OriginalPresent=$(if($originalPresent){'1'}else{'0'})
-        OriginalHash=$originalHash
-        InstalledHash=$CompatibilityAsiHash
-    }
-    $temporary=$target+'.gtaiv-scaling-new'
-    try{
-        Copy-Item -LiteralPath $CompatibilityAsi -Destination $temporary -Force
-        Assert-SHA256 $temporary $CompatibilityAsiHash 'staged GTA IV compatibility ASI 1.7.3'
-        Move-Item -LiteralPath $temporary -Destination $target -Force
-        Assert-SHA256 $target $CompatibilityAsiHash 'installed GTA IV compatibility ASI 1.7.3'
-        Write-CompatibilityReceipt $Root $info
-    }catch{
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-        if($originalPresent){Copy-Item -LiteralPath (Join-Path $backup 'a_gta4-rtx.asi') -Destination $target -Force}
-        elseif(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Force}
-        throw
-    }
-    Write-Host 'Installed upstream GTA IV compatibility mod 1.7.3 (Social Club overlay device fix).' -ForegroundColor Green
-    return $info
-}
-function Write-CompatibilityReceipt([string]$Root,[object]$Info){
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf)){Fail 'Scaling receipt is missing while recording compatibility ASI state.'}
-    $values=[ordered]@{
-        CompatibilityAsiVersion='1.7.3'
-        CompatibilityAsiManaged=[string]$Info.Managed
-        CompatibilityAsiInstalledHash=[string]$Info.InstalledHash
-        CompatibilityAsiOriginalPresent=[string]$Info.OriginalPresent
-        CompatibilityAsiOriginalHash=[string]$Info.OriginalHash
-        CompatibilityAsiBackup=[string]$Info.BackupPath
+    if(Test-Path -LiteralPath $target -PathType Leaf){$currentHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant()}
+    $installedHash=Get-ReceiptValue $text 'CompatibilityAsiInstalledHash'
+    if($currentHash -and $currentHash -ne $installedHash){Write-Warning 'a_gta4-rtx.asi was changed after v1.2.9; preserving the current file.';return}
+    if((Get-ReceiptValue $text 'CompatibilityAsiOriginalPresent') -eq '1'){
+        $backupDir=Get-ReceiptValue $text 'CompatibilityAsiBackup'
+        if(-not $backupDir){Fail 'Original compatibility ASI backup path is missing.'}
+        $rootFull=[IO.Path]::GetFullPath($Root).TrimEnd('\')+'\'
+        $backupFull=[IO.Path]::GetFullPath($backupDir)
+        if(-not $backupFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){Fail 'Compatibility ASI backup path is outside the GTA IV folder.'}
+        $backupFile=Join-Path $backupFull 'a_gta4-rtx.asi'
+        if(-not(Test-Path -LiteralPath $backupFile -PathType Leaf)){Fail 'Original a_gta4-rtx.asi backup is missing.'}
+        $originalHash=Get-ReceiptValue $text 'CompatibilityAsiOriginalHash'
+        if((Get-FileHash -LiteralPath $backupFile -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash){Fail 'Original compatibility ASI backup failed its SHA-256 check.'}
+        Copy-Item -LiteralPath $backupFile -Destination $target -Force
+        if((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToUpperInvariant() -ne $originalHash){Fail 'Could not verify the restored original compatibility ASI.'}
+        Write-Host 'Restored the pre-v1.2.9 a_gta4-rtx.asi.' -ForegroundColor Green
+    }elseif($currentHash -eq $installedHash){
+        Remove-Item -LiteralPath $target -Force
+        Write-Host 'Removed the RTX Remix ASI that was incorrectly bundled by the previous v1.2.9 build.' -ForegroundColor Green
     }
     $lines=New-Object 'System.Collections.Generic.List[string]'
-    $seen=@{}
-    foreach($line in [IO.File]::ReadAllLines($receipt)){
-        if($line -match '^([^=]+)='){
-            $key=$Matches[1]
-            if($values.Contains($key)){
-                [void]$lines.Add($key+'='+$values[$key])
-                $seen[$key]=$true
-                continue
-            }
-            if($key -eq 'Version'){
-                [void]$lines.Add('Version=1.2.9')
-                continue
-            }
-        }
-        [void]$lines.Add($line)
-    }
-    foreach($key in $values.Keys){
-        if(-not $seen.ContainsKey($key)){[void]$lines.Add($key+'='+$values[$key])}
-    }
+    foreach($line in [IO.File]::ReadAllLines($receipt)){if($line -notmatch '^CompatibilityAsi'){[void]$lines.Add($line)}}
     $temporary=$receipt+'.gtaiv-scaling-receipt.tmp'
     [IO.File]::WriteAllLines($temporary,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $temporary -Destination $receipt -Force
@@ -236,33 +179,16 @@ function Write-CompatibilityReceipt([string]$Root,[object]$Info){
 
 '''
 
-def is_pe_i386(data):
-    need(len(data) > 0x40 and data[:2] == b"MZ", "Compatibility ASI is not a PE executable")
-    pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
-    need(data[pe_offset:pe_offset+4] == b"PE\0\0", "Compatibility ASI has an invalid PE header")
-    machine = struct.unpack_from("<H", data, pe_offset+4)[0]
-    need(machine == 0x14C, f"Compatibility ASI must be 32-bit x86, got machine 0x{machine:04X}")
-    return True
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", type=Path, required=True, help="Unpacked v1.2.6 release-prep artifact")
     ap.add_argument("--client", type=Path, required=True, help="Successful selective-mask diagnostic d3d9.dll")
-    ap.add_argument("--compat-archive", type=Path, required=True, help="Official upstream GTAIV compatibility mod 1.7.3 ZIP")
     args = ap.parse_args()
     repo=Path.cwd()
     runtime_zip=args.base / "installer/payload/GTAIV-Scaling-Runtime-v1.2.6.zip"
     need(runtime_zip.is_file(), f"Missing {runtime_zip}")
     need(sha(runtime_zip.read_bytes())==BASE_RUNTIME_SHA, "Wrong v1.2.6 runtime")
     need(sha(args.client.read_bytes())==TESTED_CLIENT_SHA, "Wrong or untested bridge DLL")
-    need(args.compat_archive.is_file(), f"Missing upstream compatibility archive: {args.compat_archive}")
-    need(sha(args.compat_archive.read_bytes())==UPSTREAM_COMPAT_ZIP_SHA, "Wrong upstream GTA IV compatibility mod 1.7.3 archive")
-    with zipfile.ZipFile(args.compat_archive) as upstream:
-        compat_name = "GTAIV-Remix-CompatibilityMod/a_gta4-rtx.asi"
-        need(compat_name in upstream.namelist(), f"Missing {compat_name} in upstream archive")
-        compat_bytes = upstream.read(compat_name)
-    is_pe_i386(compat_bytes)
-    need(64 * 1024 < len(compat_bytes) < 100 * 1024 * 1024, "Unexpected compatibility ASI size")
     src=repo / "_runtime127"
     if src.exists(): shutil.rmtree(src)
     src.mkdir()
@@ -294,10 +220,6 @@ def main():
 
     payload=repo/"installer/payload"
     payload.mkdir(parents=True,exist_ok=True)
-    compat_asi = payload/"a_gta4-rtx-1.7.3.asi"
-    compat_asi.write_bytes(compat_bytes)
-    compatibility_hash = sha(compat_bytes)
-    (payload/"a_gta4-rtx-v1.7.3.sha256").write_text(compatibility_hash+"\n",encoding="ascii")
     out_zip=payload/"GTAIV-Scaling-Runtime-v1.2.9.zip"
     with zipfile.ZipFile(out_zip,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for file in sorted(src.rglob("*")):
@@ -340,12 +262,12 @@ def main():
     runner=replace_once(runner,
         "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}",
         "if(Get-Process NvRemixBridge -ErrorAction SilentlyContinue){Fail 'Close NvRemixBridge.exe before installing.'}\n" +
-        "    if(Test-ExistingV129 $Root){$compat=Install-CompatibilityAsi $Root;Write-CompatibilityReceipt $Root $compat;if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'Already on v1.2.9; Social Club compatibility verified and graphics preserved.';return}\n" +
-        "    if(Test-ExistingV128 $Root){$compat=Install-CompatibilityAsi $Root;Write-CompatibilityReceipt $Root $compat;if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.8 upgraded to 1.2.9 with Social Club overlay fix; graphics preserved.';return}\n" +
-        "    if(Repair-V127InstallerOnly $Root){$compat=Install-CompatibilityAsi $Root;Write-CompatibilityReceipt $Root $compat;if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.7 upgraded to 1.2.9; graphics preserved.';return}\n" +
-        "    if(Repair-V126BridgePin $Root){$compat=Install-CompatibilityAsi $Root;Write-CompatibilityReceipt $Root $compat;if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.6 upgraded to 1.2.9; Social Club overlay fix installed.';return}",
+        "    if(Test-ExistingV129 $Root){Remove-InjectedCompatibilityAsi $Root;if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.9 repaired; obsolete RTX Remix ASI removed or restored, graphics preserved.';return}\n" +
+        "    if(Test-ExistingV128 $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.8 upgraded to v1.2.9; graphics preserved.';return}\n" +
+        "    if(Repair-V127InstallerOnly $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.7 upgraded to v1.2.9; graphics preserved.';return}\n" +
+        "    if(Repair-V126BridgePin $Root){if($NrMode -ne 'skip' -and $gpu.Series -in @(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage};Write-Result 'v1.2.6 upgraded to v1.2.9; graphics preserved.';return}",
         "v1.2.6 fast hotfix invocation")
-    for key,value in [("__SCALING_RUNTIME_SHA256__",runtimehash),("__SCALING_FEEDER_SHA256__",FEEDER_SHA),("__COMPATIBILITY_ASI_SHA256__",compatibility_hash)]:
+    for key,value in [("__SCALING_RUNTIME_SHA256__",runtimehash),("__SCALING_FEEDER_SHA256__",FEEDER_SHA)]:
         runner=replace_once(runner,key,value,f"runner {key}")
     (payload/"Run-Scaling-Action.ps1").write_text(runner,encoding="utf-8")
 
@@ -358,7 +280,6 @@ def main():
     print(f"PINNED CLIENT SHA256={TESTED_CLIENT_SHA}")
     print(f"RUNTIME ZIP SHA256={runtimehash}")
     print(f"FEEDER SHA256={FEEDER_SHA}")
-    print(f"COMPATIBILITY ASI 1.7.3 SHA256={compatibility_hash}")
     print(f"CHANGED RUNTIME FILES={sorted(changed)}")
     print(f"FOUNDATION HASH ENTRIES={n[0]}")
     print("PASS: payload and Inno sources ready")
