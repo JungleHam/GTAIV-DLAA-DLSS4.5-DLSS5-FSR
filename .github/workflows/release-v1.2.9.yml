@@ -95,7 +95,7 @@ jobs:
           foreach($token in @('a_gta4-rtx.asi','Restore-CompatibilityAsi $Game','CompatibilityAsiOriginalHash')){
             if(-not $uninstaller.Contains($token)){throw "Uninstaller rollback missing $token"}
           }
-          $asi='.installerpayloada_gta4-rtx-1.7.3.asi'
+          $asi='./installer/payload/a_gta4-rtx-1.7.3.asi'
           $asiSha=([IO.File]::ReadAllText('.\installer\payload\a_gta4-rtx-v1.7.3.sha256')).Trim()
           if((Get-FileHash $asi -Algorithm SHA256).Hash -ne $asiSha){throw 'Compatibility ASI checksum mismatch'}
           $bytes=[IO.File]::ReadAllBytes($asi)
@@ -107,7 +107,7 @@ jobs:
             if(-not $iss.Contains($token)){throw "Inno setup missing $token"}
           }
           [void][ScriptBlock]::Create([IO.File]::ReadAllText('.\installer\Update-NR-v128.ps1'))
-          $archive='.installerpayloadGTAIV-Scaling-Runtime-v1.2.9.zip'
+          $archive='./installer/payload/GTAIV-Scaling-Runtime-v1.2.9.zip'
           $record=([IO.File]::ReadAllText('.\installer\payload\GTAIV-Scaling-Runtime-v1.2.9.sha256')).Trim()
           if((Get-FileHash $archive -Algorithm SHA256).Hash -ne $record){throw 'Runtime integrity mismatch'}
           $dll=(Get-FileHash '_runtime127/d3d9.dll' -Algorithm SHA256).Hash
