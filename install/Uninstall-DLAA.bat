@@ -71,7 +71,7 @@ function Find-DlaaPreinstallBackup([string]$Game) {
 }
 function Snapshot-Current([string]$Game) {
     New-Item -ItemType Directory -Path $Safety -Force | Out-Null
-    foreach ($name in @('d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
+    foreach ($name in @('a_gta4-rtx.asi','d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
         Copy-Path (Join-Path $Game $name) (Join-Path $Safety $name)
     }
     Copy-Path (Join-Path $Game '.trex') (Join-Path $Safety '.trex')
@@ -88,7 +88,7 @@ function Snapshot-Current([string]$Game) {
 function Restore-Safety([string]$Game) {
     $trex = Join-Path $Game '.trex'
     if (Test-Path -LiteralPath $trex) { Remove-Item -LiteralPath $trex -Recurse -Force -ErrorAction SilentlyContinue }
-    foreach ($name in @('d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
+    foreach ($name in @('a_gta4-rtx.asi','d3d9.dll','d3d9Hooked.dll','dxvk.conf','commandline.txt','DLAA_INSTALL_MANIFEST.txt','DLAA_AIO_install.log','DLSS_FULL_INSTALLED.txt','DLSS_FULL_install.log','DLSS_FULL_uninstall.log','DLSS-Full-Control.bat','Uninstall-DLSS-Full.bat')) {
         $dst = Join-Path $Game $name
         if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue }
         Copy-Path (Join-Path $Safety $name) $dst
