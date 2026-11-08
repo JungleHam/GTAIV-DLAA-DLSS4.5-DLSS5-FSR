@@ -14,8 +14,7 @@ param(
     [string]$RuntimePackage,
     [Parameter(Mandatory=$true)]
     [string]$ReShadePatch,
-    [string]$ResultFile = '',
-    [string]$CompatibilityAsi = ''
+    [string]$ResultFile = ''
 )
 
 $ErrorActionPreference='Stop'
@@ -24,7 +23,6 @@ $Version='1.2.6'
 $RuntimeHash='__SCALING_RUNTIME_SHA256__'
 $FeederHash='__SCALING_FEEDER_SHA256__'
 $ReShadePatchHash='D5BD8CB2B6E935506888EA71711361B9AFCD72ED7C70926C0F52E8F8E47C7510'
-$CompatibilityAsiHash='__COMPATIBILITY_ASI_SHA256__'
 $LumeniteHash='572FEFB20D466AFE50998E16996B4833BEC675264485C99FE768A2337636E756'
 $script:Temp=$null
 
@@ -410,8 +408,6 @@ function Install-Scaling([string]$Root){
         "Pre123Backup=$backup"
     )
     [IO.File]::WriteAllLines((Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'),$receipt,[Text.UTF8Encoding]::new($false))
-    $compatibilityAsi=Install-CompatibilityAsi $Root
-    Write-CompatibilityReceipt $Root $compatibilityAsi
     Write-Host ''
     if($NrMode -ne 'skip' -and $gpu.Series-in@(20,30,40,50)){TryAutoNrUpdate $Root $NrPackage}
     Write-Host 'GTA IV Scaling 1.2.6 installed / repaired successfully.' -ForegroundColor Green
