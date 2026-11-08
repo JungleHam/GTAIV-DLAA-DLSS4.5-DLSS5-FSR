@@ -187,15 +187,16 @@ jobs:
           if (-not $diSource.Contains('M3K-BRIDGE-DIK-EXTENDED-KEYS')) { throw 'DirectInput extended-key patch marker missing' }
           git -C _bbridge diff --check
           python -m pip install --disable-pip-version-check meson==0.64.1 ninja==1.11.1.1
-          Push-Location _bbridge
+          $bbridgeRoot = (Resolve-Path .\_bbridge).Path
+          Push-Location $bbridgeRoot
           . .\build_common.ps1
           SetupVS -Platform x86
           meson setup --buildtype release --backend ninja _prebuilt32 --debug
           Copy-Item .\Directory.Build.Props .\_prebuilt32 -Force
           meson compile -C _prebuilt32 d3d9
           if ($LASTEXITCODE -ne 0) { throw "x86 d3d9 build failed: $LASTEXITCODE" }
-          $clientDll = '.\_prebuilt32\src\client\d3d9.dll'
-          if (-not (Test-Path -LiteralPath $clientDll)) { throw 'Built b-bridge x86 client DLL missing' }
+          $clientDll = Join-Path $bbridgeRoot '_prebuilt32\src\client\d3d9.dll'
+          if (-not (Test-Path -LiteralPath $clientDll)) { throw "Built b-bridge x86 client DLL missing: $clientDll" }
           $clientAscii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($clientDll))
           if (-not $clientAscii.Contains('[M3K-DI-KEY]')) { throw 'Built b-bridge client DLL is missing the extended-key forwarding marker' }
           SetupVS -Platform x64
