@@ -320,9 +320,9 @@ static void m3k_bbridge_ui_logical_mouse_bounds(void *window, unsigned int max_p
     {
         next_poll = now + 250;
 
-        // ReShade is hosted by NvRemixBridge.exe, but the M3K configuration
-        // lives beside GTAIV.exe. g_target_executable_path is the current
-        // ReShade host executable, so using it here silently reads the wrong
+        // ReShade is hosted by NvRemixBridge.exe, while M3K stores its
+        // configuration in GTAIV.exe's .trex subfolder. g_target_executable_path
+        // is the current ReShade host executable, so it points at the wrong
         // directory. Resolve the process that actually owns the render HWND.
         if (cached_owner_pid != owner_pid || cached_ini_path.empty())
         {
@@ -340,7 +340,7 @@ static void m3k_bbridge_ui_logical_mouse_bounds(void *window, unsigned int max_p
                 {
                     owner_image_path.resize(owner_image_length);
                     cached_ini_path =
-                        std::filesystem::path(owner_image_path).parent_path() / L"m3k-nr.ini";
+                        std::filesystem::path(owner_image_path).parent_path() / L".trex" / L"m3k-nr.ini";
                 }
                 CloseHandle(owner_process);
             }
