@@ -72,8 +72,8 @@ begin
   ActionPage.Add('Restore the previous runtime');
   ActionPage.Values[0] := True;
 
-  SocialClubPage := CreateInputOptionPage(ActionPage.ID, 'Optional shortcut', 'Rockstar Social Club shortcut', 'Home opens ReShade. You can optionally reserve End for Rockstar Social Club.', False, False);
-  SocialClubPage.Add('Use End for Rockstar Social Club (End is reserved; Home remains ReShade's shortcut).');
+  SocialClubPage := CreateInputOptionPage(ActionPage.ID, 'Optional shortcut', 'Rockstar Social Club shortcut', 'Home opens ReShade; F11 remains Steam's shortcut. You can optionally reserve End for Rockstar Social Club.', False, False);
+  SocialClubPage.Add('Use End for Rockstar Social Club (End is reserved; Home stays ReShade; F11 is unchanged).');
   SocialClubPage.Values[0] := False;
 end;
 
