@@ -49,6 +49,7 @@ jobs:
           [void][ScriptBlock]::Create($script)
           if (-not $script.Contains('[M3K-DI-KEY]')) { throw 'Client marker validation missing.' }
           if (-not $script.Contains('[M3K-VIEWPORT-RT]')) { throw 'Presenter marker validation missing.' }
+          if (-not $script.Contains('M3K-SOCIAL-CLUB-END-KEY')) { throw 'Social Club End-key remap validation missing.' }
 
       - name: Install Inno Setup
         shell: pwsh
