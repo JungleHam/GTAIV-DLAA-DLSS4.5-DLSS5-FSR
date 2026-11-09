@@ -213,6 +213,7 @@ function Expand-AndVerifyRuntime([string]$Package) {
     if (-not $client.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Test runtime d3d9.dll does not contain the Home/F11 forwarding trace.' }
     if (-not $client.Contains('M3K-STEAM-INPUT')) { Fail 'Test runtime d3d9.dll does not contain the Steam F11 input trace.' }
     if (-not $client.Contains('M3K-SOCIAL-CLUB-END-KEY')) { Fail 'Test runtime d3d9.dll does not contain the optional Social Club End-key remap.' }
+    if (-not $client.Contains('M3K-SOCIAL-CLUB-HOOK-ALWAYS')) { Fail 'Test runtime d3d9.dll does not contain the minimal Social Club keyboard hook.' }
     $presenter = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $destination 'd3d9vk_x64.dll')))
     if (-not $presenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Test runtime presenter does not contain the viewport diagnostic marker.' }
     return $destination
@@ -293,6 +294,7 @@ function Install-TestRuntime([string]$Root, [string]$Package) {
         if (-not $installedClient.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Installed Home/F11 forwarding trace verification failed.' }
         if (-not $installedClient.Contains('M3K-STEAM-INPUT')) { Fail 'Installed Steam F11 input trace verification failed.' }
         if (-not $installedClient.Contains('M3K-SOCIAL-CLUB-END-KEY')) { Fail 'Installed Social Club End-key remap verification failed.' }
+        if (-not $installedClient.Contains('M3K-SOCIAL-CLUB-HOOK-ALWAYS')) { Fail 'Installed Social Club keyboard hook verification failed.' }
         if (-not $installedPresenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Installed presenter verification failed.' }
 
         Set-ReceiptValues $receipt $backup
