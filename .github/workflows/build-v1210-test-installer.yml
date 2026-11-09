@@ -2,12 +2,6 @@ name: Build GTA IV Scaling 1.2.10 test installer
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ fix/v1.2.10-viewport-input ]
-    paths:
-      - 'installer/GTAIV-Scaling-Test-Setup.iss'
-      - 'installer/Install-Test-Runtime.ps1'
-      - '.github/workflows/build-v1210-test-installer.yml'
 
 permissions:
   contents: read
