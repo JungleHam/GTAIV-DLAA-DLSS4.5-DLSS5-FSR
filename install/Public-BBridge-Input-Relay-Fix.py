@@ -13,6 +13,11 @@ if not window_path.is_file() or not di_path.is_file():
     raise SystemExit("missing b-bridge window.cpp or di_hook.cpp")
 
 window = window_path.read_text(encoding="utf-8")
+if '#include "config/config.h"' not in window:
+    include_anchor = '#include "window.h"'
+    if window.count(include_anchor) != 1:
+        raise SystemExit("could not find window.cpp include anchor for bridge config")
+    window = window.replace(include_anchor, include_anchor + '\n#include "config/config.h"', 1)
 window_marker = "M3K-BBRIDGE-RELAY-ACK-HOOK"
 if window_marker not in window:
     include_anchor = "#include <unordered_map>"
@@ -212,10 +217,14 @@ static void removeRelayHandshakeHooks()
   // The End-key hook injects Home with a private dwExtraInfo marker. Let that
   // synthetic Home reach GTA IV/Rockstar, but do not forward it to ReShade.
   const ULONG_PTR messageExtra = static_cast<ULONG_PTR>(GetMessageExtraInfo());
-  const bool isSocialClubSyntheticHome =
-    messageExtra == static_cast<ULONG_PTR>(0x4D334B53) &&
+  const bool isHomeKeyMessage =
     (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
     wParam == VK_HOME;
+  const bool isSocialClubSyntheticHome =
+    isHomeKeyMessage && messageExtra == static_cast<ULONG_PTR>(0x4D334B53);
+  const bool isSocialClubPhysicalHome =
+    isHomeKeyMessage && !isSocialClubSyntheticHome &&
+    bridge_util::Config::getOption<bool>("client.SocialClub.endKeyAsHome", false);
   const bool doForward = msg != WM_INPUT && !isSocialClubSyntheticHome;
   if (isSocialClubSyntheticHome) {
     Logger::info("[M3K-SOCIAL-CLUB-ROUTE] Synthetic Home passed to GTA IV but not forwarded to ReShade.");
@@ -224,6 +233,21 @@ static void removeRelayHandshakeHooks()
     if window.count(forward_anchor) != 1:
         raise SystemExit("could not find b-bridge input-forwarding decision")
     window = window.replace(forward_anchor, forward_replacement, 1)
+
+    home_route_anchor = """  // Block the input message when Remix UI is active
+  if (RemixState::isUIActive() && isInputMessage(msg)) {"""
+    home_route_replacement = """  // With the alternate key enabled, physical Home belongs to ReShade.
+  // End injects a tagged Home event which is allowed through to GTA IV/Rockstar.
+  if (isSocialClubPhysicalHome) {
+    Logger::info("[M3K-SOCIAL-CLUB-ROUTE] Physical Home reserved for ReShade; End is the Social Club shortcut.");
+    return true;
+  }
+
+  // Block the input message when Remix UI is active
+  if (RemixState::isUIActive() && isInputMessage(msg)) {"""
+    if window.count(home_route_anchor) != 1:
+        raise SystemExit("could not find b-bridge input-swallowing anchor")
+    window = window.replace(home_route_anchor, home_route_replacement, 1)
 
     send_anchor = """  if (doForward) {
     gpRemixMessageChannel->send(msg, wParam, lParam);
