@@ -18,10 +18,10 @@ Everything else required by the project is handled by the installer.
 ### Clean installation
 
 0. Install the latest, clean GTA IV (Steam version tested, Rockstar Game Launcher version wasn't but probably fine) 
-1. Download **`GTAIV-Scaling-Setup-v1.2.4.exe`** from the [Releases](https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR/releases) page.
+1. Download **`GTAIV-Scaling-Setup-v1.2.10.exe`** from the [Releases](https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR/releases) page.
 2. Run it as **Administrator**.
 3. Select the folder containing **`GTAIV.exe`**.
-4. Choose **Install / Repair GTA IV Scaling 1.2.4**.
+4. Choose **Install / Repair GTA IV Scaling 1.2.10**.
 5. If FusionFix is missing, the installer downloads and installs pinned **FusionFix 5.0.1**.
 6. Launch GTA IV once to the main menu, close the game, and run the installer again so FusionFix can create its first-run state.
 7. If the scaling foundation is not already installed, select the official **ReShade 6.8.0 Full Add-On Support** setup EXE when asked.
@@ -31,9 +31,9 @@ There is **no DLSS-vs-FSR installer choice**. The full shared runtime is install
 
 ### Repair / upgrade
 
-Run the v1.2.3 installer and choose **Install / Repair**. If an intact v1.2.2 installation is detected, setup performs a **configuration-only upgrade**: it backs up the DXVK configuration and receipt, removes the obsolete forced 16:9 filter, and preserves the working DLAA/DLSS/FSR binaries and per-backend settings. Other installs use the normal install/repair path.
+Run **GTAIV-Scaling-Setup-v1.2.10.exe** and choose **Install / Repair**. It installs the verified 1.2.10 runtime on both clean setups and existing Scaling installations; it does not require a pre-existing Scaling version.
 
-The installer backs up the project-owned scaling files before replacing the stack.
+Before replacing project-owned runtime files, setup creates a backup. Existing ReShade presets, user shaders, DLSS/FSR profiles and non-project mods are preserved. Existing `bridge.conf` and `dxvk.conf` settings are merged with missing runtime defaults; only the compatibility keys required by the input relay and viewport fix are enforced.
 
 ### Removal
 
@@ -72,13 +72,15 @@ Home key -> Add-ons -> GTA IV Scaling 1.2.2
 - DLSS and FSR Frame Gen
 - FSR 1.0 support for older GPUs
 
-## Current release
+## Current package
 
-**v1.2.4** (clean-install SHA256 packaging fix; reconstruction runtime remains v1.2.2)
+**v1.2.10 — full standalone package (preview build)**
 
-Installer: **GTAIV-Scaling-Setup-v1.2.4.exe**
+Installer: **GTAIV-Scaling-Setup-v1.2.10.exe** (published as a GitHub Actions build artifact while the complete installer receives in-game testing).
 
-> **v1.2.4 hotfix:** fixes the clean-install `dxvk.conf` checksum mismatch in v1.2.3 and retains the aspect-ratio fix. See [release notes](RELEASE-v1.2.4.md). Previously, **v1.2.3:** removes the inherited DXVK forced-16:9 filter, which hid non-16:9 display modes from GTA IV. It preserves modeCountCompatibility for GTA IV's fixed-size mode list. Existing v1.2.2 users can install on top without replacing the calibrated scaling binaries. The in-game Add-ons title remains 1.2.2 because its binary is unchanged.
+This package is built from the successful 1.2.10 baseline runtime: the working b-bridge input relay, viewport/presenter fix, DLAA/DLSS, FSR, DLSS 5 feeder, GPU-aware Neural Rendering updater, FusionFix handling, and install/repair/removal actions are bundled together. It supports clean installs and upgrades without relying on an earlier Scaling installer.
+
+**Keyboard behavior:** Home opens ReShade; F11 opens the Steam overlay. No End-key remapping is included.
 
 ## Screenshots
 
@@ -98,7 +100,7 @@ The installer detects NVIDIA RTX capability and writes it into the runtime confi
 
 On non-RTX systems the NVIDIA choice is hidden, and an old saved NVIDIA selection is automatically moved to AMD FSR instead of trying to open an unavailable backend.
 
-v1.2.1 enables Neural Rendering on RTX 20/30 using the ShortFuse 310.8.SF-v2 compatibility runtime. RTX 40 keeps the existing project-tested 310.8.0 compatibility runtime, while RTX 50 keeps the NVIDIA-signed 310.8.0 runtime. NR remains OFF by default on every supported RTX generation.
+Neural Rendering is available on RTX 20/30/40/50. RTX 20/30 use the ShortFuse compatibility runtime; RTX 40 uses its generation-matched compatibility runtime; RTX 50 uses the NVIDIA-signed runtime. NR remains OFF by default on every supported RTX generation.
 
 ## In-game controls
 
