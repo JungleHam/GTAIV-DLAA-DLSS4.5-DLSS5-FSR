@@ -160,12 +160,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 echo.
 echo ============================================================
 echo PATCHED DLL INSTALLED AND HASH-VERIFIED
-echo IN-GAME HOME-KEY VERIFICATION IS STILL REQUIRED
+echo IN-GAME DELETE-KEY VERIFICATION IS STILL REQUIRED
 echo ============================================================
 echo.
 echo 1. Fully launch GTA IV again.
 echo 2. Wait until the game reaches a rendered menu or gameplay scene.
-echo 3. Press HOME.
+echo 3. Press DELETE.
 echo.
 echo A CORRECT patched ReShade.log should contain:
 echo   b-bridge input relay: accepting foreign render window
