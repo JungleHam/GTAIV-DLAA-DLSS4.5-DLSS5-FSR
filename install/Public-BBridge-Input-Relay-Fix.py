@@ -341,6 +341,69 @@ if "M3K-BRIDGE-INPUT-TRACE" not in di:
 
     di_path.write_text(di, encoding="utf-8", newline="\n")
 
+
+# The alternate Social Club key must work even when b-bridge's optional
+# custom-window-hook override is disabled. Install only the low-level keyboard
+# hook in that case; do not enable the other custom hooks as a side effect.
+if "M3K-SOCIAL-CLUB-HOOK-ALWAYS" not in di:
+    old_attach = """static void InputWinHooksAttach() {
+  if (!ClientOptions::getOverrideCustomWinHooks()) {
+    return;
+  }
+
+  assert(gWinHooks.empty());
+
+  auto attachWinHook = [](int idHook, HOOKPROC lpfn) {
+    if (HHOOK h = SetWindowsHookEx(idHook, lpfn, nullptr, GetCurrentThreadId())) {
+      return std::pair { idHook, h };
+    }
+    Logger::warn(format_string("SetWindowsHookEx failed with idHook=%d", idHook));
+    return std::pair { idHook , static_cast<HHOOK>(nullptr) };
+  };
+
+  gWinHooks = {
+    attachWinHook(WH_CALLWNDPROC, HookedCallWndProc),
+    attachWinHook(WH_GETMESSAGE,  HookedGetMsgProc),
+    attachWinHook(WH_KEYBOARD,    HookedKeyboardProc),
+    attachWinHook(WH_KEYBOARD_LL, HookedLowLevelKeyboardProc),
+  };
+}
+"""
+    new_attach = """static void InputWinHooksAttach() {
+  assert(gWinHooks.empty());
+
+  auto attachWinHook = [](int idHook, HOOKPROC lpfn) {
+    if (HHOOK h = SetWindowsHookEx(idHook, lpfn, nullptr, GetCurrentThreadId())) {
+      return std::pair { idHook, h };
+    }
+    Logger::warn(format_string("SetWindowsHookEx failed with idHook=%d", idHook));
+    return std::pair { idHook , static_cast<HHOOK>(nullptr) };
+  };
+
+  if (!ClientOptions::getOverrideCustomWinHooks()) {
+    if (Config::getOption<bool>("client.SocialClub.endKeyAsHome", false)) {
+      gWinHooks = {
+        attachWinHook(WH_KEYBOARD_LL, HookedLowLevelKeyboardProc),
+      };
+      Logger::info("[M3K-SOCIAL-CLUB-HOOK-ALWAYS] Installed the low-level keyboard hook for the optional End-to-Home shortcut.");
+    }
+    return;
+  }
+
+  gWinHooks = {
+    attachWinHook(WH_CALLWNDPROC, HookedCallWndProc),
+    attachWinHook(WH_GETMESSAGE,  HookedGetMsgProc),
+    attachWinHook(WH_KEYBOARD,    HookedKeyboardProc),
+    attachWinHook(WH_KEYBOARD_LL, HookedLowLevelKeyboardProc),
+  };
+}
+"""
+    if di.count(old_attach) != 1:
+        raise SystemExit("could not find InputWinHooksAttach block")
+    di = di.replace(old_attach, new_attach, 1)
+    di_path.write_text(di, encoding="utf-8", newline="\n")
+
+
 window_check = window_path.read_text(encoding="utf-8")
 di_check = di_path.read_text(encoding="utf-8")
 for marker, source in (
@@ -348,6 +411,7 @@ for marker, source in (
     ("M3K-BRIDGE-INPUT-TRACE", di_check),
     ("M3K-STEAM-INPUT", di_check),
     ("M3K-SOCIAL-CLUB-END-KEY", di_check),
+    ("M3K-SOCIAL-CLUB-HOOK-ALWAYS", di_check),
 ):
     if marker not in source:
         raise SystemExit(f"verification failed: {marker}")
