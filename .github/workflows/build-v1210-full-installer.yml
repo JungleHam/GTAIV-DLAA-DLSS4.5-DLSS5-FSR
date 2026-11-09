@@ -10,6 +10,10 @@ on:
       - 'install/Install-DLAA-v1.2.10.bat'
       - 'install/core/Install-DLAA-Core-v1.2.10.bat'
       - 'install/Uninstall-DLAA.bat'
+      - 'README.md'
+      - 'docs/RESHade-INPUT-PATCH.md'
+      - 'tools/reshade-bbridge-input/INSTALL.bat'
+      - 'tools/reshade-bbridge-input/README.md'
       - '.github/workflows/build-v1210-full-installer.yml'
   workflow_dispatch:
 
@@ -176,7 +180,26 @@ jobs:
           if ($iss.Contains('Use End as alternate') -or $iss.Contains('Social Club key')) {
             throw 'The full installer must not expose the abandoned End-key experiment.'
           }
-          Write-Host 'PowerShell components parse and the Inno package references the baseline-only feature set.'
+
+          $action = [IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action-v1.2.10.ps1')
+          if (-not $action.Contains("Set-Ini $path 'INPUT' 'KeyOverlay' '46,0,0,0'")) {
+            throw 'Install / Repair must configure ReShade KeyOverlay to VK_DELETE (46).'
+          }
+          if (-not $action.Contains('Set-ReShadeOverlayShortcut $Root') -or -not $action.Contains("'.trex\ReShade.ini'")) {
+            throw 'The Delete shortcut must be applied and the previous ReShade.ini backed up.'
+          }
+          if ($iss.Contains('Home opens ReShade') -or $iss.Contains('press Home')) {
+            throw 'Installer UI still advertises Home as the ReShade shortcut.'
+          }
+          if (-not $iss.Contains('Delete opens ReShade') -or -not $iss.Contains('press Delete')) {
+            throw 'Installer UI must advertise Delete as the ReShade shortcut.'
+          }
+
+          $core = [IO.File]::ReadAllText('.\install\core\Install-DLAA-Core-v1.2.10.bat')
+          if (-not $core.Contains("Set-IniValue $rsIni 'INPUT' 'KeyOverlay' '46,0,0,0'")) {
+            throw 'Fresh foundation installs must also configure ReShade KeyOverlay to Delete.'
+          }
+          Write-Host 'PowerShell components parse and the Inno package references the Delete-key shortcut consistently.'
 
       - name: Install Inno Setup
         shell: pwsh
