@@ -341,8 +341,10 @@ static void m3k_bbridge_ui_logical_mouse_bounds(void *window, unsigned int max_p
     // max_position initially contains the real physical client extent. The
     // logical dimensions must not exceed that physical extent, but otherwise
     // must replace it exactly (not an estimated DLSS preset percentage).
-    const unsigned int logical_width = std::min(max_position[0], cached_width);
-    const unsigned int logical_height = std::min(max_position[1], cached_height);
+    const unsigned int physical_width = max_position[0];
+    const unsigned int physical_height = max_position[1];
+    const unsigned int logical_width = std::min(physical_width, cached_width);
+    const unsigned int logical_height = std::min(physical_height, cached_height);
     if (logical_width == 0 || logical_height == 0)
         return;
 
@@ -354,8 +356,8 @@ static void m3k_bbridge_ui_logical_mouse_bounds(void *window, unsigned int max_p
         logged_width = logical_width;
         logged_height = logical_height;
         reshade::log::message(reshade::log::level::info,
-            "[M3K-BBRIDGE-LOGICAL-MOUSE-BOUNDS] logical=%ux%u physical-client-at-least=%ux%u",
-            logical_width, logical_height, max_position[0], max_position[1]);
+            "[M3K-BBRIDGE-LOGICAL-MOUSE-BOUNDS] logical=%ux%u physical-client=%ux%u",
+            logical_width, logical_height, physical_width, physical_height);
     }
 }
 '@
