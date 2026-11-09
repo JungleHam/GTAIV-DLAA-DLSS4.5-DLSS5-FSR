@@ -16,6 +16,7 @@ on:
       - 'docs/RESHade-INPUT-PATCH.md'
       - 'tools/reshade-bbridge-input/INSTALL.bat'
       - 'tools/reshade-bbridge-input/README.md'
+      - 'tools/reshade-bbridge-input/apply_patch.ps1'
       - '.github/workflows/build-v1210-full-installer.yml'
   workflow_dispatch:
 
@@ -43,7 +44,7 @@ jobs:
           gh run download 42619124189 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the pinned cleaned-prebuilt-runtime artifact.' }
 
-          gh run download 42644188102 --repo "$env:GITHUB_REPOSITORY" --name 'prebuilt-reshade' --dir '_reshade-artifact'
+          gh run download 42649783447 --repo "$env:GITHUB_REPOSITORY" --name 'prebuilt-reshade' --dir '_reshade-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the pinned prebuilt-reshade artifact.' }
 
       - name: Verify runtime, bridge client, viewport presenter and ReShade input patch
@@ -51,7 +52,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $expectedRuntime = 'E69D0F764117DEA1559CC45003D48CF7B19E05AC343E8B7618BD21FD573D6419'
-          $expectedReShade = '7563DF1D1F9DA8B187CDDB9D7295EAE7523D7DE8934B3C6AF16D74AE8DB287D6'
+          $expectedReShade = 'DE654100E1BE5250DCAFBF5FD921F29BA2E0DD0BDAB1623BE0BB00062EA47906'
           $expectedFeeder = 'D4125D1E0D9F28877D71FC58311E9C3A23A2F080D16E0E9E7D465A6E4B497648'
 
           $runtimeZip = Resolve-Path '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.zip'
@@ -139,7 +140,7 @@ jobs:
           if (-not $core.Contains($runtimePin)) { throw 'Clean-install foundation does not pin the 1.2.10 runtime archive.' }
 
           $foundation = [IO.File]::ReadAllText('.\install\Install-DLAA-v1.2.10.bat')
-          if (-not $foundation.Contains('7563DF1D1F9DA8B187CDDB9D7295EAE7523D7DE8934B3C6AF16D74AE8DB287D6')) {
+          if (-not $foundation.Contains('DE654100E1BE5250DCAFBF5FD921F29BA2E0DD0BDAB1623BE0BB00062EA47906')) {
             throw 'Foundation installer does not pin the matching ReShade input patch.'
           }
 
