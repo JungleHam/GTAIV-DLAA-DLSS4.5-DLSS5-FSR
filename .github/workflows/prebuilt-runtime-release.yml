@@ -103,7 +103,11 @@ jobs:
           if (-not (Test-Path $dll)) { throw 'ReShade64.dll missing after build' }
           $ascii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll))
           if (-not $ascii.Contains('b-bridge input relay')) { throw 'Built ReShade DLL patch marker missing' }
-          if (-not $ascii.Contains('m3k-nr.ini')) { throw 'Compiled ReShade DLL missing M3K scale cursor logic' }
+          # m3k-nr.ini is a UTF-16LE Windows wide-string literal inside the DLL.
+          $rawDll = [IO.File]::ReadAllBytes($dll)
+          $wide0 = [Text.Encoding]::Unicode.GetString($rawDll)
+          $wide1 = [Text.Encoding]::Unicode.GetString($rawDll,1,$rawDll.Length-1)
+          if (-not ($wide0.Contains('m3k-nr.ini') -or $wide1.Contains('m3k-nr.ini'))) { throw 'Compiled ReShade DLL missing M3K scale cursor logic' }
           New-Item -ItemType Directory -Path .\out-reshade -Force | Out-Null
           Copy-Item $dll .\out-reshade\ReShade64-bbridge.dll -Force
           Copy-Item .\reshade-src\LICENSE.md .\out-reshade\ReShade-LICENSE.md -Force
