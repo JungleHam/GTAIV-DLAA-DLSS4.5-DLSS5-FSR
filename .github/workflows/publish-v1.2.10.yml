@@ -1,0 +1,87 @@
+name: Publish GTA IV Scaling v1.2.10
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-v1.2.10.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for the approved standalone installer build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh run watch 42664015996 --repo "$env:GITHUB_REPOSITORY" --exit-status
+          if ($LASTEXITCODE -ne 0) { throw 'The approved v1.2.10 installer build did not complete successfully.' }
+
+      - name: Download and verify release assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path .\_installer-artifact -Force | Out-Null
+          New-Item -ItemType Directory -Path .\_runtime-artifact -Force | Out-Null
+          New-Item -ItemType Directory -Path .\release-assets -Force | Out-Null
+
+          gh run download 42664015996 --repo "$env:GITHUB_REPOSITORY" --name 'GTAIV-Scaling-v1.2.10-Full-Installer' --dir .\_installer-artifact
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the approved v1.2.10 standalone installer artifact.' }
+
+          gh run download 42534466980 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir .\_runtime-artifact
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the pinned v1.2.10 runtime artifact.' }
+
+          $exe = Get-ChildItem .\_installer-artifact -Recurse -File -Filter 'GTAIV-Scaling-Setup-v1.2.10.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'The standalone installer EXE is missing.' }
+          $exeHash = (Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToUpperInvariant()
+          if ($exeHash -ne '2E046077EBB024D23B91A56A561987A081B57122E70045C031C63EC57468C15C') {
+            throw "Unexpected v1.2.10 installer hash: $exeHash"
+          }
+
+          $runtime = Get-ChildItem .\_runtime-artifact -Recurse -File -Filter 'GTAIV-DLSS-Full-Runtime.zip' | Select-Object -First 1
+          if (-not $runtime) { throw 'The full runtime ZIP is missing.' }
+          $runtimeHash = (Get-FileHash -LiteralPath $runtime.FullName -Algorithm SHA256).Hash.ToUpperInvariant()
+          if ($runtimeHash -ne '47FBC6A88201F9CE17B9FFE354B57EA9133E7FAFE7D20203B118A33827D244E7') {
+            throw "Unexpected v1.2.10 runtime hash: $runtimeHash"
+          }
+
+          $runtimeSha = Get-ChildItem .\_runtime-artifact -Recurse -File -Filter 'GTAIV-DLSS-Full-Runtime.sha256' | Select-Object -First 1
+          if (-not $runtimeSha) { throw 'The runtime SHA256 record is missing.' }
+          $recordedRuntimeHash = (Get-Content -LiteralPath $runtimeSha.FullName -Raw).Trim().Split(' ')[0].ToUpperInvariant()
+          if ($recordedRuntimeHash -ne $runtimeHash) { throw 'The runtime SHA256 record does not match the runtime ZIP.' }
+
+          Copy-Item -LiteralPath $exe.FullName -Destination '.\release-assets\GTAIV-Scaling-Setup-v1.2.10.exe' -Force
+          Copy-Item -LiteralPath $runtime.FullName -Destination '.\release-assets\GTAIV-Scaling-Runtime-v1.2.10.zip' -Force
+          $exeHash | Set-Content '.\release-assets\GTAIV-Scaling-Setup-v1.2.10.sha256' -Encoding ASCII
+          $runtimeHash | Set-Content '.\release-assets\GTAIV-Scaling-Runtime-v1.2.10.sha256' -Encoding ASCII
+
+          Write-Host "Installer SHA-256: $exeHash"
+          Write-Host "Runtime SHA-256: $runtimeHash"
+
+      - name: Publish v1.2.10 GitHub release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release view v1.2.10 --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'v1.2.10 already exists; refusing to overwrite it.' }
+
+          $assets = @(
+            '.\release-assets\GTAIV-Scaling-Setup-v1.2.10.exe',
+            '.\release-assets\GTAIV-Scaling-Setup-v1.2.10.sha256',
+            '.\release-assets\GTAIV-Scaling-Runtime-v1.2.10.zip',
+            '.\release-assets\GTAIV-Scaling-Runtime-v1.2.10.sha256'
+          )
+          gh release create v1.2.10 $assets --repo "$env:GITHUB_REPOSITORY" --target 66010bc30912dd6bfb21b9cc1a5fdbeedf7a3d39 --title "GTA IV Scaling v1.2.10 — standalone release" --notes-file .\RELEASE-v1.2.10.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub v1.2.10 release creation failed.' }
+
+          gh release view v1.2.10 --repo "$env:GITHUB_REPOSITORY"
