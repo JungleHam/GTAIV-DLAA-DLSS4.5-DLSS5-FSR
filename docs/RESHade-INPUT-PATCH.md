@@ -79,11 +79,17 @@ client.DirectInput.forward.mousePolicy = 3
 client.DirectInput.forward.keyboardPolicy = 3
 ```
 
+## Overlay shortcut
+
+The installer configures ReShade's `[INPUT] KeyOverlay` as `46,0,0,0` (`VK_DELETE`). This makes **Delete** open the overlay and also updates ReShade's own startup/tutorial prompt, which displays the configured overlay key.
+
+The installer preserves the previous `ReShade.ini` in its pre-install backup before changing this one setting.
+
 ## Verification
 
-Launch GTA IV and press **Home**.
+Launch GTA IV and press **Delete**.
 
-The patch is working when the ReShade overlay opens and accepts mouse/keyboard input.
+The patch is working when the ReShade overlay opens and accepts mouse/keyboard input. The ReShade prompt should identify **Delete**, not Home.
 
 Useful log:
 
