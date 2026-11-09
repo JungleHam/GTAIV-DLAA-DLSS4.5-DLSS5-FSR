@@ -59,7 +59,7 @@ begin
   PrepText :=
     'This is a TEST runtime update for an existing GTA IV Scaling v1.2.9 installation.' + #13#10 + #13#10 +
     'It updates the game-side bridge client, DXVK presenter and matched runtime files so we can test the Home-key and viewport diagnostics fixes.' + #13#10 + #13#10 +
-    'An optional setting can add End as an alternate Rockstar Social Club shortcut; the original Home key remains available.' + #13#10 + #13#10 +
+    'An optional setting can make End open Rockstar Social Club without triggering ReShade; Home remains ReShade's shortcut.' + #13#10 + #13#10 +
     'A timestamped backup of every file this updater changes is created inside your GTA IV folder. The installer also includes a Restore Previous Runtime option.' + #13#10 + #13#10 +
     'This is not a fresh-install package. It preserves FusionFix, your Neural Rendering DLL, M3K settings, ReShade.ini, ReShade presets and game mods.';
   PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.10 TEST', 'Runtime update / rollback', 'For existing v1.2.9 installations only.', PrepText);
@@ -72,8 +72,8 @@ begin
   ActionPage.Add('Restore the previous runtime');
   ActionPage.Values[0] := True;
 
-  SocialClubPage := CreateInputOptionPage(ActionPage.ID, 'Optional shortcut', 'Rockstar Social Club shortcut', 'Home remains the original shortcut. You can optionally add End as an alternative.', False, False);
-  SocialClubPage.Add('Use End as an alternate Social Club key (End sends Home while GTA IV is focused).');
+  SocialClubPage := CreateInputOptionPage(ActionPage.ID, 'Optional shortcut', 'Rockstar Social Club shortcut', 'Home opens ReShade. You can optionally use End to open Rockstar Social Club instead.', False, False);
+  SocialClubPage.Add('Use End to open Rockstar Social Club (Home remains ReShade's shortcut).');
   SocialClubPage.Values[0] := False;
 end;
 
@@ -109,11 +109,11 @@ begin
     Result := Result + 'Action:' + NewLine + '  Install / repair 1.2.10 test runtime' + NewLine + NewLine +
       'A timestamped backup of the current v1.2.9 runtime files will be created first.' + NewLine +
       'Your existing ReShade and Neural Rendering settings will be preserved.' + NewLine + NewLine +
-      'Social Club shortcut: Home remains available.';
+      'ReShade shortcut: Home remains unchanged.';
     if SocialClubPage.Values[0] then
-      Result := Result + NewLine + 'Additional shortcut: End sends Home to Rockstar Social Club.'
+      Result := Result + NewLine + 'Social Club shortcut: End sends a separate Home event to Rockstar without opening ReShade.'
     else
-      Result := Result + NewLine + 'Additional shortcut: Disabled.';
+      Result := Result + NewLine + 'Alternate Social Club shortcut: Disabled (native Home behavior unchanged).';
   end else
     Result := Result + 'Action:' + NewLine + '  Restore the previous runtime from the backup created by this installer.';
 end;
@@ -164,9 +164,9 @@ begin
   if CurPageID = wpFinished then begin
     if SelectedAction = 0 then begin
       if SocialClubPage.Values[0] then
-        WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 test runtime installed. End is enabled as an alternate Social Club shortcut; Home remains available. Test F11 / Steam overlay and DLAA scaling. Run this installer again and choose Restore Previous Runtime to roll back.'
+        WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 test runtime installed. End opens Rockstar Social Club; Home remains ReShade's shortcut. F11 remains Steam's shortcut. Test F11 / Steam overlay and DLAA scaling. Run this installer again and choose Restore Previous Runtime to roll back.'
       else
-        WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 test runtime installed. Home remains the Social Club shortcut. Test F11 / Steam overlay and DLAA scaling. Run this installer again and choose Restore Previous Runtime to roll back.';
+        WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 test runtime installed. Home remains ReShade's shortcut; the Social Club alternate key is disabled. Test F11 / Steam overlay and DLAA scaling. Run this installer again and choose Restore Previous Runtime to roll back.';
     end else
       WizardForm.FinishedLabel.Caption := 'The previous GTA IV Scaling runtime has been restored. The backup was retained inside the GTA IV folder.';
   end;
