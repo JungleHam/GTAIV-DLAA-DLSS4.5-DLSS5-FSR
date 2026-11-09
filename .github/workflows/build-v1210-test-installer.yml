@@ -27,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          gh run download 42529493460 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
+          gh run download 42534466980 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the successful cleaned-prebuilt-runtime artifact.' }
 
           $runtime = '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.zip'
@@ -38,6 +38,10 @@ jobs:
           $expected = (Get-Content -LiteralPath $hashFile -Raw).Trim().Split(' ')[0].ToUpperInvariant()
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtime).Hash.ToUpperInvariant()
           if ($actual -ne $expected) { throw "Runtime ZIP checksum mismatch. Expected $expected, got $actual." }
+          $installerScript = [IO.File]::ReadAllText('.\installer\Install-Test-Runtime.ps1')
+          $pinned = [regex]::Match($installerScript, '(?m)^\$RuntimeZipHash\s*=\s*''([A-Fa-f0-9]{64})''')
+          if (-not $pinned.Success) { throw 'Test installer script does not contain a pinned runtime ZIP SHA256.' }
+          if ($actual -ne $pinned.Groups[1].Value.ToUpperInvariant()) { throw 'Runtime ZIP SHA256 disagrees with the install script; refusing to package a mismatched installer.' }
 
           New-Item -ItemType Directory -Path '.\installer\test-payload' -Force | Out-Null
           Copy-Item -LiteralPath $runtime -Destination '.\installer\test-payload\GTAIV-DLSS-Full-Runtime.zip' -Force
