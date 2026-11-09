@@ -293,6 +293,34 @@ if "M3K-BRIDGE-INPUT-TRACE" not in di:
 
   if (nCode >= 0) {
     const KBDLLHOOKSTRUCT *key = reinterpret_cast<const KBDLLHOOKSTRUCT *>(lParam);
+
+    // Optional alternate Social Club shortcut. End injects the Home key
+    // while GTA IV is focused; the original End event is swallowed so it
+    // cannot also trigger an unrelated in-game action. Home remains native.
+    if (key != nullptr && key->vkCode == VK_END &&
+        !RemixState::isUIActive() &&
+        Config::getOption<bool>("client.SocialClub.endKeyAsHome", false)) {
+      INPUT home = {};
+      home.type = INPUT_KEYBOARD;
+      home.ki.wVk = VK_HOME;
+      home.ki.wScan = static_cast<WORD>(MapVirtualKeyW(VK_HOME, MAPVK_VK_TO_VSC));
+      home.ki.dwFlags = KEYEVENTF_EXTENDEDKEY |
+        ((key->flags & LLKHF_UP) ? KEYEVENTF_KEYUP : 0);
+      home.ki.dwExtraInfo = static_cast<ULONG_PTR>(0x4D334B53);
+
+      const UINT sent = SendInput(1, &home, sizeof(INPUT));
+      if (sent == 1) {
+        Logger::info(format_string(
+          "[M3K-SOCIAL-CLUB-END-KEY] End mapped to Home (%s).",
+          (key->flags & LLKHF_UP) ? "up" : "down"));
+        return 1;
+      }
+
+      Logger::warn(format_string(
+        "[M3K-SOCIAL-CLUB-END-KEY] SendInput failed while mapping End to Home (error=%lu).",
+        GetLastError()));
+    }
+
     if (key != nullptr && key->vkCode == VK_F11) {
       Logger::info(format_string(
         "[M3K-STEAM-INPUT] low-level F11 message=0x%X ui=%d",
@@ -319,6 +347,7 @@ for marker, source in (
     ("M3K-BBRIDGE-RELAY-ACK-HOOK", window_check),
     ("M3K-BRIDGE-INPUT-TRACE", di_check),
     ("M3K-STEAM-INPUT", di_check),
+    ("M3K-SOCIAL-CLUB-END-KEY", di_check),
 ):
     if marker not in source:
         raise SystemExit(f"verification failed: {marker}")
