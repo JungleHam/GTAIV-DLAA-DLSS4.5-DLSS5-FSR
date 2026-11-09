@@ -207,6 +207,24 @@ static void removeRelayHandshakeHooks()
         raise SystemExit("could not find remixMsg renderer-channel handler")
     window = window.replace(msg_anchor, msg_replacement, 1)
 
+    forward_anchor = "  const bool doForward = msg != WM_INPUT;\n"
+    forward_replacement = """  // Keep the alternate Social Club key separate from ReShade's Home shortcut.
+  // The End-key hook injects Home with a private dwExtraInfo marker. Let that
+  // synthetic Home reach GTA IV/Rockstar, but do not forward it to ReShade.
+  const ULONG_PTR messageExtra = static_cast<ULONG_PTR>(GetMessageExtraInfo());
+  const bool isSocialClubSyntheticHome =
+    messageExtra == static_cast<ULONG_PTR>(0x4D334B53) &&
+    (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
+    wParam == VK_HOME;
+  const bool doForward = msg != WM_INPUT && !isSocialClubSyntheticHome;
+  if (isSocialClubSyntheticHome) {
+    Logger::info("[M3K-SOCIAL-CLUB-ROUTE] Synthetic Home passed to GTA IV but not forwarded to ReShade.");
+  }
+"""
+    if window.count(forward_anchor) != 1:
+        raise SystemExit("could not find b-bridge input-forwarding decision")
+    window = window.replace(forward_anchor, forward_replacement, 1)
+
     send_anchor = """  if (doForward) {
     gpRemixMessageChannel->send(msg, wParam, lParam);
   }
@@ -408,6 +426,7 @@ window_check = window_path.read_text(encoding="utf-8")
 di_check = di_path.read_text(encoding="utf-8")
 for marker, source in (
     ("M3K-BBRIDGE-RELAY-ACK-HOOK", window_check),
+    ("M3K-SOCIAL-CLUB-ROUTE", window_check),
     ("M3K-BRIDGE-INPUT-TRACE", di_check),
     ("M3K-STEAM-INPUT", di_check),
     ("M3K-SOCIAL-CLUB-END-KEY", di_check),
