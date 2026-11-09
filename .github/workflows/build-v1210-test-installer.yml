@@ -2,6 +2,12 @@ name: Build GTA IV Scaling 1.2.10 test installer
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ fix/v1.2.10-viewport-input ]
+    paths:
+      - 'installer/GTAIV-Scaling-Test-Setup.iss'
+      - 'installer/Install-Test-Runtime.ps1'
+      - '.github/workflows/build-v1210-test-installer.yml'
 
 permissions:
   contents: read
@@ -21,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          gh run download 42534466980 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
+          gh run download 42587101875 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the successful cleaned-prebuilt-runtime artifact.' }
 
           $runtime = '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.zip'
