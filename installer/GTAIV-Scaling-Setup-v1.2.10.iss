@@ -156,7 +156,7 @@ begin
     'The installer detects your GPU and the game only shows scaling backends that make sense on that machine.' + #13#10 + #13#10 +
     'NVIDIA RTX: Off / NVIDIA DLAA-DLSS / AMD FidelityFX FSR.' + #13#10 +
     'Non-RTX: Off / AMD FidelityFX FSR.' + #13#10 + #13#10 +
-    'Home opens ReShade; F11 opens the Steam overlay. This build does not remap End.' + #13#10 + #13#10 +
+    'Delete opens ReShade; F11 opens the Steam overlay. The ReShade startup prompt also displays Delete.' + #13#10 + #13#10 +
     'FusionFix and project dependencies are handled automatically. On a fresh setup you may only need to select the official ReShade 6.8.0 Full Add-On installer.';
   PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.10', 'Unified install / repair', 'One package, runtime capability filtering.', PrepText);
 
@@ -378,7 +378,7 @@ begin
     end;
 
     if SelectedAction = 0 then
-      WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 is installed. Launch GTA IV, press Home, open Add-ons → GTA IV Scaling, and choose the scaling technology you want.'
+      WizardForm.FinishedLabel.Caption := 'GTA IV Scaling 1.2.10 is installed. Launch GTA IV, press Delete, open Add-ons → GTA IV Scaling, and choose the scaling technology you want.'
     else if SelectedAction = 4 then
       WizardForm.FinishedLabel.Caption := 'Latest stable FusionFix installed or already current. Existing DLSS / FSR / ReShade files were not changed.'
     else if SelectedAction = 3 then
