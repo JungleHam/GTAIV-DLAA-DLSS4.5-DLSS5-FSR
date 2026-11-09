@@ -57,12 +57,12 @@ begin
   WizardForm.Caption := '{#MyAppName} {#MyAppVersion}';
   SelectedAction := 0;
   PrepText :=
-    'This is a TEST runtime update for an existing GTA IV Scaling v1.2.9 installation.' + #13#10 + #13#10 +
+    'This is a TEST runtime update for an existing GTA IV Scaling v1.2.9 or 1.2.10-test installation.' + #13#10 + #13#10 +
     'It updates the game-side bridge client, DXVK presenter and matched runtime files so we can test the Home-key and viewport diagnostics fixes.' + #13#10 + #13#10 +
     'An optional setting can make End open Rockstar Social Club without triggering ReShade; while enabled, End is reserved for that shortcut and Home remains ReShade's shortcut.' + #13#10 + #13#10 +
     'A timestamped backup of every file this updater changes is created inside your GTA IV folder. The installer also includes a Restore Previous Runtime option.' + #13#10 + #13#10 +
     'This is not a fresh-install package. It preserves FusionFix, your Neural Rendering DLL, M3K settings, ReShade.ini, ReShade presets and game mods.';
-  PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.10 TEST', 'Runtime update / rollback', 'For existing v1.2.9 installations only.', PrepText);
+  PrepPage := CreateOutputMsgMemoPage(wpWelcome, 'GTA IV Scaling 1.2.10 TEST', 'Runtime update / rollback', 'For existing v1.2.9 or 1.2.10-test installations.', PrepText);
 
   GamePage := CreateInputDirPage(PrepPage.ID, 'Select GTA IV', 'Choose the folder that contains GTAIV.exe', 'Select the GTA IV game folder.', False, '');
   GamePage.Add('');
@@ -107,7 +107,7 @@ begin
   Result := 'GTA IV folder:' + NewLine + '  ' + GameDir + NewLine + NewLine;
   if SelectedAction = 0 then begin
     Result := Result + 'Action:' + NewLine + '  Install / repair 1.2.10 test runtime' + NewLine + NewLine +
-      'A timestamped backup of the current v1.2.9 runtime files will be created first.' + NewLine +
+      'The original v1.2.9 runtime backup is created on first install and reused for later repairs.' + NewLine +
       'Your existing ReShade and Neural Rendering settings will be preserved.' + NewLine + NewLine +
       'ReShade shortcut: Home remains unchanged.';
     if SocialClubPage.Values[0] then
