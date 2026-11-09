@@ -296,7 +296,7 @@ function Backup-ScalingFiles([string]$Root){
     $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
     $dest=Join-Path $Root ("_GTAIV_SCALING_PRE123_BACKUP_"+$stamp)
     New-Item -ItemType Directory -Path $dest -Force|Out-Null
-    foreach($rel in @('d3d9.dll','dxvk.conf','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
+    foreach($rel in @('d3d9.dll','dxvk.conf','GTAIV_SCALING_INSTALLED.txt','.trex\ReShadePreset.ini','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
         $src=Join-Path $Root $rel
         if(Test-Path -LiteralPath $src){
             $dst=Join-Path $dest $rel;$parent=Split-Path -Parent $dst
