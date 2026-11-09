@@ -17,7 +17,7 @@ If you are testing the patch outside the main installer:
 1. Close GTA IV and `NvRemixBridge.exe`.
 2. Run **`INSTALL.bat`** as Administrator.
 3. Select the GTA IV folder containing `GTAIV.exe`.
-4. Launch GTA IV and press **Home**.
+4. Launch GTA IV and press **Delete**.
 5. Confirm the ReShade overlay accepts mouse and keyboard input.
 
 Useful files:
