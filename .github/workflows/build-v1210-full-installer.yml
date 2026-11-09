@@ -220,7 +220,7 @@ jobs:
           $exe = '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.exe'
           if (-not (Test-Path -LiteralPath $exe)) { throw 'Compiled standalone installer is missing.' }
           $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToUpperInvariant()
-          $hash | Set-Content '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10.sha256' -Encoding ASCII
+          $hash | Set-Content '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.sha256' -Encoding ASCII
           Write-Host "GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.exe SHA-256: $hash"
 
       - name: Upload full standalone installer
