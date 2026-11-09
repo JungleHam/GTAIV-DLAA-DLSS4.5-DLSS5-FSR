@@ -262,6 +262,22 @@ if ($gui.Contains('reshade_bridge_notify_ui_state(get_hwnd(), open);')) {
 }
 
 
+# runtime_gui.cpp has no Win32 input declarations by default.
+# Include them for this Windows-only bridge coordinate correction.
+if (!$gui.Contains('#include <Windows.h>')) {
+    $includeAnchor = '#include "platform_utils.hpp"'
+    if (!$gui.Contains($includeAnchor)) {
+        throw 'Cannot locate runtime_gui.cpp platform include anchor.'
+    }
+    $win32Includes = @'
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+'@
+    $win32Includes = Normalize-Text $win32Includes
+    $gui = $gui.Replace($includeAnchor, $includeAnchor + "`n" + $win32Includes)
+}
 # GTA IV's internal rendering dimensions can be lower than the final Vulkan
 # output. ReShade normally maps input coordinates by render/client dimensions.
 # b-bridge's forwarded mouse coordinates can already be in the reduced render
