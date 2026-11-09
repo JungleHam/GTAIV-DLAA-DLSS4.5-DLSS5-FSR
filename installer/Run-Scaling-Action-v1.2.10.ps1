@@ -21,12 +21,6 @@ $Version='1.2.10'
 $RuntimeHash='__SCALING_RUNTIME_SHA256__'
 $FeederHash='__SCALING_FEEDER_SHA256__'
 $ReShadePatchHash='0BD8636C03AB3B9D2AD8FF400A834F2FE40AC369AB3314E8E17E0989924AFF48'
-$Nr40DllHash='4B8D19BC3EFF58A084F5ECA7489C921501C203450169FB82FF4F649A4482BA05'
-$Nr50DllHash='E16BCF15E16E13F527491CDF7845B2FE6521A738D8F7C9C721866A8496E1FC8E'
-$NrSfDllHash='6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927'
-$Nr40ZipHash='46124CFAEF532AD5F6DA07494772EA8C1B3E719F934E254385697F38D1289E3F'
-$Nr50ZipHash='388C0A7912E15EC911B9C9E11A692142B11FE387DDF2B637D8C358138FFFB3AC'
-$NrSfZipHash='1DA35941894994EB087E017577829E492454E9BAE3A6A9397027069CEB74955C'
 $LumeniteHash='572FEFB20D466AFE50998E16996B4833BEC675264485C99FE768A2337636E756'
 $script:Temp=$null
 
@@ -240,31 +234,6 @@ function Ensure-Technique([string]$Path,[string]$Technique){
     }
     [IO.File]::WriteAllText($Path,$text,[Text.UTF8Encoding]::new($false))
 }
-function Resolve-NrDll([object]$Gpu,[string]$OwnPath){
-    if($Gpu.Series -notin @(20,30,40,50)){return $null}
-    if($OwnPath){
-        $dll=(Resolve-Path -LiteralPath $OwnPath).Path
-    }else{
-        if($Gpu.Series-in@(20,30)){$tag='dlssnr-310.8.SF-v2';$asset='nvngx_dlssnr_310.8.SF-v2.zip';$expectedZip=$NrSfZipHash}
-        elseif($Gpu.Series-eq40){$tag='dlssnr-310.8.0-RTX40';$asset='nvngx_dlssnr_310.8.0-RTX40.zip';$expectedZip=$Nr40ZipHash}
-        else{$tag='dlssnr-310.8.0';$asset='nvngx_dlssnr_310.8.0.zip';$expectedZip=$Nr50ZipHash}
-        $zip=Join-Path (Get-AutoTemp) $asset
-        Download-GitHubReleaseAsset 'RankFTW/rhi-repo' $tag $asset $zip 'DLSS Neural Rendering'
-        Assert-SHA256 $zip $expectedZip 'Neural Rendering ZIP'
-        $out=Join-Path (Get-AutoTemp) 'nr'
-        Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
-        $found=@(Get-ChildItem -LiteralPath $out -Recurse -File -Filter 'nvngx_dlssnr.dll')
-        if($found.Count-ne1){Fail "Expected one nvngx_dlssnr.dll, found $($found.Count)."}
-        $dll=$found[0].FullName
-    }
-    $expected=if($Gpu.Series-in@(20,30)){$NrSfDllHash}elseif($Gpu.Series-eq40){$Nr40DllHash}else{$Nr50DllHash}
-    Assert-SHA256 $dll $expected 'Neural Rendering DLL'
-    if($Gpu.Series-eq50){
-        $sig=Get-AuthenticodeSignature -LiteralPath $dll
-        if($sig.Status-ne'Valid'-or$sig.SignerCertificate.Subject-notmatch'NVIDIA'){Fail 'RTX 50 Neural Rendering DLL signature is invalid.'}
-    }
-    return $dll
-}
 function Backup-ScalingFiles([string]$Root){
     $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
     $dest=Join-Path $Root ("_GTAIV_SCALING_PRE123_BACKUP_"+$stamp)
@@ -350,22 +319,9 @@ function Install-Scaling([string]$Root){
     Set-KeyEquals (Join-Path $trex 'dlss5-feed.cfg') 'work_resolution' '100'
     Ensure-Technique (Join-Path $trex 'ReShadePreset.ini') 'M3K_Sharpen@M3K_Sharpen.fx'
 
-    $nrDest=Join-Path $trex 'm3k\nvngx_dlssnr.dll'
-    $latestHashes=@(
-        'CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED',
-        '2BC19BC09A7B89DD44F73E2AC0108FCC586E2154BDD0830F242F4F040E28789F'
-    )
-    $hasLatest=(Test-Path -LiteralPath $nrDest -PathType Leaf) -and
-       ((Get-FileHash -LiteralPath $nrDest -Algorithm SHA256).Hash.ToUpperInvariant() -in $latestHashes)
-    if($gpu.Series-in@(20,30,40,50)){
-        if(-not $hasLatest){
-            $oldLocal=if($NrPackage -and $NrPackage.EndsWith('.dll',[StringComparison]::OrdinalIgnoreCase)){$NrPackage}else{''}
-            $nr=Resolve-NrDll $gpu $oldLocal
-            Copy-Item -LiteralPath $nr -Destination $nrDest -Force
-        }else{Write-Host 'Keeping preinstalled verified 310.9.16 NR DLL.' -ForegroundColor Green}
-    }elseif(Test-Path -LiteralPath $nrDest){
-        Remove-Item -LiteralPath $nrDest -Force
-    }
+    # NR installation is handled exclusively by Update-NR.ps1 below.
+    # It reads the approved version/hash from manifests/nr-versions.json,
+    # keeping Install/Repair and the standalone NR updater on one source of truth.
 
     $ini=Join-Path $trex 'm3k-nr.ini'
     $existingTech=Get-Ini $ini 'M3K' 'ScalingTechnology'
