@@ -123,7 +123,7 @@ try {
         Set-KeyEquals $bridgeConf 'client.DirectInput.forward.mousePolicy' '3'; Set-KeyEquals $bridgeConf 'client.DirectInput.forward.keyboardPolicy' '3'
     } else { Write-Host '[2/2] System-wide ReShade input patch already active.' -ForegroundColor Green }
     if (-not (Has-PatchMarker $GlobalReShade)) { Fail 'Final ReShade input-patch verification failed.' }
-    Write-Host ''; Write-Host 'DONE - DLAA + ReShade input patch installed.' -ForegroundColor Green; Write-Host 'Launch GTA IV once. Press Home and confirm ReShade accepts mouse/keyboard input.' -ForegroundColor White
+    Write-Host ''; Write-Host 'DONE - DLAA + ReShade input patch installed.' -ForegroundColor Green; Write-Host 'Launch GTA IV once. Press Delete and confirm ReShade accepts mouse/keyboard input.' -ForegroundColor White
     Start-Sleep -Seconds 3; exit 0
 } catch { $err=$_.Exception.Message; Write-Host ''; Write-Host ('INSTALL FAILED: '+$err) -ForegroundColor Red; Write-SetupResultIfEmpty $err; Read-Host 'Press Enter to close'; exit 1 }
 finally { if($CoreTemp -and (Test-Path -LiteralPath $CoreTemp)){Remove-Item -LiteralPath $CoreTemp -Force -ErrorAction SilentlyContinue}; if(Test-Path -LiteralPath $Temp){Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue} }
