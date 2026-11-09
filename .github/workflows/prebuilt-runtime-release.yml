@@ -89,7 +89,7 @@ jobs:
           $src = Get-Content .\reshade-src\source\input_windows.cpp -Raw
           if (-not $src.Contains('b-bridge cross-process input relay')) { throw 'Patched ReShade source marker missing' }
           $gui = Get-Content .\reshade-src\source\runtime_gui.cpp -Raw
-          if (-not $gui.Contains('M3K-BBRIDGE-RENDER-SCALE-MOUSE-LIMIT')) { throw 'ReShade scaling-aware mouse mapping not applied' }
+          if (-not $gui.Contains('M3K-BBRIDGE-LOGICAL-MOUSE-BOUNDS-CALL')) { throw 'ReShade exact logical mouse-bound mapping not applied' }
       - name: Build patched ReShade x64
         shell: pwsh
         run: |
@@ -107,7 +107,11 @@ jobs:
           $rawDll = [IO.File]::ReadAllBytes($dll)
           $wide0 = [Text.Encoding]::Unicode.GetString($rawDll)
           $wide1 = [Text.Encoding]::Unicode.GetString($rawDll,1,$rawDll.Length-1)
-          if (-not ($wide0.Contains('m3k-nr.ini') -or $wide1.Contains('m3k-nr.ini'))) { throw 'Compiled ReShade DLL missing M3K scale cursor logic' }
+          if (-not ($wide0.Contains('m3k-nr.ini') -or $wide1.Contains('m3k-nr.ini'))) { throw 'Compiled ReShade DLL missing M3K configuration lookup' }
+          if (-not ($wide0.Contains('VirtualizeGameClient') -or $wide1.Contains('VirtualizeGameClient'))) { throw 'Compiled ReShade DLL missing virtualized-client flag lookup' }
+          if (-not ($wide0.Contains('RenderWidth') -or $wide1.Contains('RenderWidth'))) { throw 'Compiled ReShade DLL missing exact logical render-width lookup' }
+          if (-not ($wide0.Contains('RenderHeight') -or $wide1.Contains('RenderHeight'))) { throw 'Compiled ReShade DLL missing exact logical render-height lookup' }
+          if (-not $ascii.Contains('M3K-BBRIDGE-LOGICAL-MOUSE-BOUNDS')) { throw 'Compiled ReShade DLL missing logical mouse-bound correction marker' }
           New-Item -ItemType Directory -Path .\out-reshade -Force | Out-Null
           Copy-Item $dll .\out-reshade\ReShade64-bbridge.dll -Force
           Copy-Item .\reshade-src\LICENSE.md .\out-reshade\ReShade-LICENSE.md -Force
