@@ -174,6 +174,16 @@ function Get-Ini([string]$Path,[string]$Section,[string]$Key){
     }
     return $null
 }
+function Set-ReShadeOverlayShortcut([string]$Root){
+    $path=Join-Path $Root '.trex\ReShade.ini'
+    if(-not(Test-Path -LiteralPath $path -PathType Leaf)){Fail 'ReShade.ini is missing; cannot configure the overlay shortcut.'}
+    # VK_DELETE is 0x2E (46). ReShade uses KeyOverlay both for input and its
+    # startup prompt, so the actual shortcut and displayed key stay in sync.
+    Set-Ini $path 'INPUT' 'KeyOverlay' '46,0,0,0'
+    $actual=Get-Ini $path 'INPUT' 'KeyOverlay'
+    if($actual -ne '46,0,0,0'){Fail "ReShade overlay shortcut verification failed. Expected Delete (46,0,0,0), got: $actual"}
+    Write-Host 'ReShade overlay shortcut: Delete' -ForegroundColor Green
+}
 function Set-KeyEquals([string]$Path,[string]$Key,[string]$Value){
     $text=if(Test-Path -LiteralPath $Path){[IO.File]::ReadAllText($Path)}else{''}
     $pat='(?m)^\s*'+[regex]::Escape($Key)+'\s*=\s*.*$';$line="$Key = $Value"
@@ -238,7 +248,7 @@ function Backup-ScalingFiles([string]$Root){
     $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
     $dest=Join-Path $Root ("_GTAIV_SCALING_PRE123_BACKUP_"+$stamp)
     New-Item -ItemType Directory -Path $dest -Force|Out-Null
-    foreach($rel in @('d3d9.dll','dxvk.conf','GTAIV_SCALING_INSTALLED.txt','.trex\ReShadePreset.ini','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
+    foreach($rel in @('d3d9.dll','dxvk.conf','GTAIV_SCALING_INSTALLED.txt','.trex\ReShadePreset.ini','.trex\ReShade.ini','.trex\NvRemixBridge.exe','.trex\d3d9vk_x64.dll','.trex\bridge.conf','.trex\dlss5-feed.addon64','.trex\dlss5-feed.cfg','.trex\m3k-nr.ini','.trex\nvngx_dlss.dll','.trex\m3k\m3k-nvngx.dll','.trex\m3k\nvngx_dlssnr.dll')){
         $src=Join-Path $Root $rel
         if(Test-Path -LiteralPath $src){
             $dst=Join-Path $dest $rel;$parent=Split-Path -Parent $dst
@@ -288,6 +298,7 @@ function Install-Scaling([string]$Root){
     }
 
     $backup=Backup-ScalingFiles $Root
+    Set-ReShadeOverlayShortcut $Root
     $trex=Join-Path $Root '.trex'
     $runtimeDir=Join-Path (Get-AutoTemp) 'runtime'
     Expand-Archive -LiteralPath $RuntimePackage -DestinationPath $runtimeDir -Force
