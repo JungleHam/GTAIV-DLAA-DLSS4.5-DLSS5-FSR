@@ -303,7 +303,7 @@ static float m3k_bbridge_ui_render_scale(void *window)
         owner_pid == GetCurrentProcessId())
         return 1.0f;
 
-    static const std::filesystem::path ini_path = g_reshade_base_path / L"m3k-nr.ini";
+    static const std::filesystem::path ini_path = g_target_executable_path.parent_path() / L"m3k-nr.ini";
     if (GetFileAttributesW(ini_path.c_str()) == INVALID_FILE_ATTRIBUTES)
         return 1.0f;
 
@@ -332,7 +332,7 @@ static float m3k_bbridge_ui_render_scale(void *window)
             case 5: scale = 0.333f; break; // Ultra Performance
             case 6: // Custom 10-100%
                 scale = std::clamp(
-                    GetPrivateProfileIntW(L"M3K", L"CustomScalePercent", 77, ini_path.c_str()),
+                    static_cast<int>(GetPrivateProfileIntW(L"M3K", L"CustomScalePercent", 77, ini_path.c_str())),
                     10, 100) / 100.0f;
                 break;
             default: break; // DLAA/native 100%
@@ -341,7 +341,7 @@ static float m3k_bbridge_ui_render_scale(void *window)
         else if (master_enabled != 0 && backend == 2) // AMD FSR
         {
             scale = std::clamp(
-                GetPrivateProfileIntW(L"M3K", L"FSRScalePermille", 1000, ini_path.c_str()),
+                static_cast<int>(GetPrivateProfileIntW(L"M3K", L"FSRScalePermille", 1000, ini_path.c_str())),
                 100, 1000) / 1000.0f;
         }
         cached_scale = std::clamp(scale, 0.10f, 1.0f);
