@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $TestVersion = '1.2.10-test'
-$RuntimeZipHash = '14D874F6ECD30E230655D0468383504D41BF90FD72FF5FC54E0A5A4EAD5EDEA3'
+$RuntimeZipHash = '47FBC6A88201F9CE17B9FFE354B57EA9133E7FAFE7D20203B118A33827D244E7'
 $script:Temp = $null
 
 $ManagedFiles = @(
