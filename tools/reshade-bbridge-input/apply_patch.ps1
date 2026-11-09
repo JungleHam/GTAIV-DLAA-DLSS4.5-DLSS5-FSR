@@ -306,32 +306,89 @@ static void m3k_bbridge_ui_logical_mouse_bounds(void *window, unsigned int max_p
         return; // Do not alter ordinary in-process ReShade.
 
     static thread_local ULONGLONG next_poll = 0;
+    static thread_local DWORD cached_owner_pid = 0;
+    static thread_local std::filesystem::path cached_ini_path;
     static thread_local bool cached_enabled = false;
     static thread_local unsigned int cached_width = 0;
     static thread_local unsigned int cached_height = 0;
     static thread_local unsigned int logged_width = 0;
     static thread_local unsigned int logged_height = 0;
+    static thread_local bool logged_missing_config = false;
 
     const ULONGLONG now = GetTickCount64();
     if (now >= next_poll)
     {
         next_poll = now + 250;
-        const std::filesystem::path ini_path =
-            g_target_executable_path.parent_path() / L"m3k-nr.ini";
 
-        if (GetFileAttributesW(ini_path.c_str()) != INVALID_FILE_ATTRIBUTES)
+        // ReShade is hosted by NvRemixBridge.exe, but the M3K configuration
+        // lives beside GTAIV.exe. g_target_executable_path is the current
+        // ReShade host executable, so using it here silently reads the wrong
+        // directory. Resolve the process that actually owns the render HWND.
+        if (cached_owner_pid != owner_pid || cached_ini_path.empty())
+        {
+            cached_owner_pid = owner_pid;
+            cached_ini_path.clear();
+
+            HANDLE owner_process = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, FALSE, owner_pid);
+            if (owner_process != nullptr)
+            {
+                std::wstring owner_image_path(32768, L'\0');
+                DWORD owner_image_length = static_cast<DWORD>(owner_image_path.size());
+                if (QueryFullProcessImageNameW(
+                    owner_process, 0, owner_image_path.data(), &owner_image_length))
+                {
+                    owner_image_path.resize(owner_image_length);
+                    cached_ini_path =
+                        std::filesystem::path(owner_image_path).parent_path() / L"m3k-nr.ini";
+                }
+                CloseHandle(owner_process);
+            }
+
+            if (!cached_ini_path.empty())
+            {
+                reshade::log::message(reshade::log::level::info,
+                    "[M3K-BBRIDGE-CONFIG-PATH] owner_pid=%lu ini=%ls exists=%d",
+                    owner_pid, cached_ini_path.c_str(),
+                    GetFileAttributesW(cached_ini_path.c_str()) != INVALID_FILE_ATTRIBUTES ? 1 : 0);
+            }
+            else
+            {
+                reshade::log::message(reshade::log::level::warning,
+                    "[M3K-BBRIDGE-CONFIG-PATH-FAIL] cannot resolve executable path for render-window owner pid=%lu",
+                    owner_pid);
+            }
+        }
+
+        if (!cached_ini_path.empty() &&
+            GetFileAttributesW(cached_ini_path.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
             cached_enabled =
-                GetPrivateProfileIntW(L"M3K", L"VirtualizeGameClient", 0, ini_path.c_str()) != 0;
+                GetPrivateProfileIntW(L"M3K", L"VirtualizeGameClient", 0, cached_ini_path.c_str()) != 0;
             cached_width =
-                GetPrivateProfileIntW(L"M3K", L"RenderWidth", 0, ini_path.c_str());
+                GetPrivateProfileIntW(L"M3K", L"RenderWidth", 0, cached_ini_path.c_str());
             cached_height =
-                GetPrivateProfileIntW(L"M3K", L"RenderHeight", 0, ini_path.c_str());
+                GetPrivateProfileIntW(L"M3K", L"RenderHeight", 0, cached_ini_path.c_str());
+
+            if (!logged_missing_config && cached_enabled && cached_width && cached_height)
+            {
+                reshade::log::message(reshade::log::level::info,
+                    "[M3K-BBRIDGE-CONFIG-LOADED] owner_pid=%lu logical=%ux%u",
+                    owner_pid, cached_width, cached_height);
+                logged_missing_config = true;
+            }
         }
         else
         {
             cached_enabled = false;
             cached_width = cached_height = 0;
+            if (!logged_missing_config)
+            {
+                reshade::log::message(reshade::log::level::warning,
+                    "[M3K-BBRIDGE-CONFIG-MISSING] expected m3k-nr.ini beside render-window owner executable; owner_pid=%lu",
+                    owner_pid);
+                logged_missing_config = true;
+            }
         }
     }
 
