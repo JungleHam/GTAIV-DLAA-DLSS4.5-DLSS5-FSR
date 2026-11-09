@@ -74,13 +74,15 @@ Delete key -> Add-ons -> GTA IV Scaling
 
 ## Current package
 
-**v1.2.10 — full standalone package (preview build)**
+**v1.2.10 — full standalone release**
 
-Installer: **GTAIV-Scaling-Setup-v1.2.10.exe** (published as a GitHub Actions build artifact while the complete installer receives in-game testing).
+Installer: **GTAIV-Scaling-Setup-v1.2.10.exe**, available from the [GitHub Releases page](https://github.com/JungleHam/GTAIV-DLAA-DLSS4.5-DLSS5-FSR/releases/tag/v1.2.10).
 
-This package is built from the successful 1.2.10 baseline runtime: the working b-bridge input relay, viewport/presenter fix, DLAA/DLSS, FSR, DLSS 5 feeder, GPU-aware Neural Rendering updater, FusionFix handling, and install/repair/removal actions are bundled together. It supports clean installs and upgrades without relying on an earlier Scaling installer.
+This package is built from the successful 1.2.10 baseline runtime: the b-bridge input relay, viewport/presenter fix, DLAA/DLSS, FSR, DLSS 5 feeder, GPU-aware Neural Rendering updater, FusionFix handling, and install/repair/removal actions are bundled together. It supports clean installs and upgrades without relying on an earlier Scaling installer.
 
-**Keyboard behavior:** Delete opens ReShade; F11 opens the Steam overlay. The ReShade startup prompt also displays Delete.
+**Keyboard behavior:** Delete opens ReShade; F11 opens the Steam overlay. Home is no longer used by ReShade, leaving it available for the Rockstar overlay. The ReShade startup prompt also displays Delete. The abandoned End-key remapping experiment is not included.
+
+**Known issue — ReShade mouse bounds:** When DLSS/FSR render scaling is active below native resolution, the ReShade overlay's interactive mouse area can remain limited to the internal render resolution instead of the full display. The cursor may be unable to reach parts of the overlay. This is not fixed in v1.2.10 and is the next planned input/UI fix.
 
 ## Screenshots
 
