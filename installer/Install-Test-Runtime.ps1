@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet('Install','Restore')][string]$Action,
     [Parameter(Mandatory=$true)][string]$Game,
     [string]$RuntimePackage = '',
-    [string]$ResultFile = ''
+    [string]$ResultFile = '',
+    [switch]$SocialClubEndKey
 )
 
 $ErrorActionPreference = 'Stop'
@@ -211,6 +212,7 @@ function Expand-AndVerifyRuntime([string]$Package) {
     if (-not $client.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { Fail 'Test runtime d3d9.dll does not contain the verified b-bridge relay hook.' }
     if (-not $client.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Test runtime d3d9.dll does not contain the Home/F11 forwarding trace.' }
     if (-not $client.Contains('M3K-STEAM-INPUT')) { Fail 'Test runtime d3d9.dll does not contain the Steam F11 input trace.' }
+    if (-not $client.Contains('M3K-SOCIAL-CLUB-END-KEY')) { Fail 'Test runtime d3d9.dll does not contain the optional Social Club End-key remap.' }
     $presenter = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $destination 'd3d9vk_x64.dll')))
     if (-not $presenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Test runtime presenter does not contain the viewport diagnostic marker.' }
     return $destination
@@ -282,6 +284,7 @@ function Install-TestRuntime([string]$Root, [string]$Package) {
         Set-KeyEquals $bridgeConf 'clientFrameCap' '0'
         Set-KeyEquals $bridgeConf 'client.DirectInput.forward.mousePolicy' '3'
         Set-KeyEquals $bridgeConf 'client.DirectInput.forward.keyboardPolicy' '3'
+        Set-KeyEquals $bridgeConf 'client.SocialClub.endKeyAsHome' ([string]$SocialClubEndKey.IsPresent)
 
         $installedClient = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $Root 'd3d9.dll')))
         $installedPresenter = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $Root '.trex\d3d9vk_x64.dll')))
@@ -289,6 +292,7 @@ function Install-TestRuntime([string]$Root, [string]$Package) {
         if (-not $installedClient.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { Fail 'Installed b-bridge relay hook verification failed.' }
         if (-not $installedClient.Contains('M3K-BRIDGE-INPUT-TRACE')) { Fail 'Installed Home/F11 forwarding trace verification failed.' }
         if (-not $installedClient.Contains('M3K-STEAM-INPUT')) { Fail 'Installed Steam F11 input trace verification failed.' }
+        if (-not $installedClient.Contains('M3K-SOCIAL-CLUB-END-KEY')) { Fail 'Installed Social Club End-key remap verification failed.' }
         if (-not $installedPresenter.Contains('[M3K-VIEWPORT-RT]')) { Fail 'Installed presenter verification failed.' }
 
         Set-ReceiptValues $receipt $backup
