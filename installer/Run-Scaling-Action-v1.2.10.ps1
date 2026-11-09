@@ -226,33 +226,6 @@ function Remove-DxvkForcedAspectRatio([string]$Path){
     }
 }
 
-# Fast upgrade from an intact 1.2.2 install: touch only dxvk.conf and the
-# receipt, preserving all existing DLAA/DLSS/FSR binaries and profiles.
-function Repair-V122AspectRatio([string]$Root){
-    $receipt=Join-Path $Root 'GTAIV_SCALING_INSTALLED.txt'
-    $config=Join-Path $Root 'dxvk.conf'
-    if(-not(Test-Path -LiteralPath $receipt -PathType Leaf) -or
-       -not(Test-Path -LiteralPath $config -PathType Leaf) -or
-       -not(Test-Foundation $Root) -or
-       -not(Test-Path -LiteralPath (Join-Path $Root '.trex\m3k-nr.ini'))){return $false}
-    $before=[IO.File]::ReadAllText($receipt)
-    if($before-notmatch '(?m)^Version=1\.2\.[234]\r?
-    $backup=Join-Path $Root ('_GTAIV_SCALING_PRE1210_BACKUP_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
-    New-Item -ItemType Directory -Path $backup -Force|Out-Null
-    Copy-Item -LiteralPath $receipt -Destination (Join-Path $backup 'GTAIV_SCALING_INSTALLED.txt') -Force
-    Copy-Item -LiteralPath $config -Destination (Join-Path $backup 'dxvk.conf') -Force
-    Remove-DxvkForcedAspectRatio $config
-    $after=[regex]::Replace($before,'(?m)^Version=1\.2\.[234](?=\r?$)','Version=1.2.10')
-    if($after-eq$before){Fail 'Cannot update legacy receipt after DXVK repair.'}
-    $after=$after.TrimEnd([char]13,[char]10)+[Environment]::NewLine+
-           'AspectRatioFix=DXVK forced 16:9 filter removed'+[Environment]::NewLine+
-           "Pre125Backup=$backup"+[Environment]::NewLine
-    [IO.File]::WriteAllText($receipt,$after,[Text.UTF8Encoding]::new($false))
-    Write-Host 'GTA IV Scaling -> 1.2.10 configuration-only upgrade complete.' -ForegroundColor Green
-    Write-Host 'Existing DLAA/DLSS/FSR files and scaling settings were preserved.' -ForegroundColor Green
-    return $true
-}
-
 function Ensure-Technique([string]$Path,[string]$Technique){
     if(-not(Test-Path -LiteralPath $Path)){return}
     $text=[IO.File]::ReadAllText($Path)
