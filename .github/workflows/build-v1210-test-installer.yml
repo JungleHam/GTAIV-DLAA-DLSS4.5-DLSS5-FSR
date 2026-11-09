@@ -51,6 +51,7 @@ jobs:
           if (-not $script.Contains('[M3K-VIEWPORT-RT]')) { throw 'Presenter marker validation missing.' }
           if (-not $script.Contains('M3K-SOCIAL-CLUB-END-KEY')) { throw 'Social Club End-key remap validation missing.' }
           if (-not $script.Contains('M3K-SOCIAL-CLUB-HOOK-ALWAYS')) { throw 'Social Club low-level hook validation missing.' }
+          if (-not $script.Contains('M3K-SOCIAL-CLUB-ROUTE')) { throw 'Social Club/ReShade input separation validation missing.' }
 
       - name: Install Inno Setup
         shell: pwsh
