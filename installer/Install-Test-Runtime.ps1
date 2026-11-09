@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $TestVersion = '1.2.10-test'
-$RuntimeZipHash = '47FBC6A88201F9CE17B9FFE354B57EA9133E7FAFE7D20203B118A33827D244E7'
+$RuntimeZipHash = '409AD2531D8703BD1683EBA9DB521B425C48F76DC85D9BF61EB500A4F73E4AC3'
 $script:Temp = $null
 
 $ManagedFiles = @(
