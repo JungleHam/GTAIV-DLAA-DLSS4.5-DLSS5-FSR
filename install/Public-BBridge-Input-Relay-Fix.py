@@ -313,11 +313,86 @@ if "M3K-BRIDGE-INPUT-TRACE" not in di:
 
     di_path.write_text(di, encoding="utf-8", newline="\n")
 
+# Keep the DirectInput mouse clamp synchronized with the live game client area.
+# b-bridge can attach before GTA IV finishes its initial window sizing. The
+# original code sampled GetWindowRect only when the window was first attached
+# or a keyboard state changed, so a stale startup size could permanently clamp
+# the ReShade cursor until a display-mode change caused another refresh.
+if "M3K-BRIDGE-MOUSE-BOUNDS-REFRESH" not in di:
+    old_size = """  static void updateWindowSize() {
+    RECT rect;
+    ::GetWindowRect(s_hwnd, &rect);
+
+    // Only accept reasonable window extents.
+    // NOTE: A game overlay may setup a zero-sized DirectInput window and make
+    // cursor position clamping code produce wrong results.
+    if (rect.right - rect.left > 16) {
+      s_windowWidth = rect.right - rect.left;
+    }
+
+    if (rect.bottom - rect.top > 16) {
+      s_windowHeight = rect.bottom - rect.top;
+    }
+  }
+"""
+    new_size = """  static void updateWindowSize() {
+    // M3K-BRIDGE-MOUSE-BOUNDS-REFRESH
+    // Mouse messages forwarded to ReShade use client coordinates, so clamp
+    // against the live client area rather than the outer window rectangle.
+    if (s_hwnd == nullptr || !IsWindow(s_hwnd)) {
+      return;
+    }
+
+    RECT rect = {};
+    if (!::GetClientRect(s_hwnd, &rect)) {
+      return;
+    }
+
+    const LONG width = rect.right - rect.left;
+    const LONG height = rect.bottom - rect.top;
+
+    // Preserve the last valid dimensions while minimized or during a mode switch.
+    if (width > 16 && height > 16) {
+      if (width != s_windowWidth || height != s_windowHeight) {
+        Logger::info(format_string(
+          "[M3K-BRIDGE-MOUSE-BOUNDS-REFRESH] client=%ldx%ld hwnd=%p previous=%ldx%ld",
+          width, height, s_hwnd, s_windowWidth, s_windowHeight));
+      }
+
+      s_windowWidth = width;
+      s_windowHeight = height;
+    }
+  }
+"""
+    if di.count(old_size) != 1:
+        raise SystemExit("could not find original DirectInput window-size function")
+    di = di.replace(old_size, new_size, 1)
+
+    old_mouse = """  template<typename T>
+  static void updateMouseState(const T* state, bool isAbsoluteAxis) {
+    if (isAbsoluteAxis) {
+"""
+    new_mouse = """  template<typename T>
+  static void updateMouseState(const T* state, bool isAbsoluteAxis) {
+    // M3K-BRIDGE-MOUSE-BOUNDS-REFRESH-CALL
+    // Refresh before clamping every mouse sample, not only on keyboard events.
+    updateWindowSize();
+
+    if (isAbsoluteAxis) {
+"""
+    if di.count(old_mouse) != 1:
+        raise SystemExit("could not find DirectInput mouse-state function")
+    di = di.replace(old_mouse, new_mouse, 1)
+
+    di_path.write_text(di, encoding="utf-8", newline="\n")
+
 window_check = window_path.read_text(encoding="utf-8")
 di_check = di_path.read_text(encoding="utf-8")
 for marker, source in (
     ("M3K-BBRIDGE-RELAY-ACK-HOOK", window_check),
     ("M3K-BRIDGE-INPUT-TRACE", di_check),
+    ("M3K-BRIDGE-MOUSE-BOUNDS-REFRESH", di_check),
+    ("M3K-BRIDGE-MOUSE-BOUNDS-REFRESH-CALL", di_check),
     ("M3K-STEAM-INPUT", di_check),
 ):
     if marker not in source:
