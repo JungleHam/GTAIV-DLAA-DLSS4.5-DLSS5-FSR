@@ -3,12 +3,13 @@ name: Build cleaned prebuilt runtime artifacts
 on:
   workflow_dispatch:
   push:
-    branches: [ main, fix/v1.2.10-viewport-input, fix/v1.2.10-reshade-cursor ]
+    branches: [ main, fix/v1.2.10-viewport-input, fix/v1.2.10-reshade-cursor, fix/v1.2.10-reshade-render-scale-mouse ]
     paths:
       - '.github/workflows/prebuilt-runtime-release.yml'
       - 'install/Public-DXVK-Viewport-RT-Audit.py'
       - 'install/Public-BBridge-DirectInput-ScanCode-Fix.py'
       - 'install/Public-BBridge-Input-Relay-Fix.py'
+      - 'tools/reshade-bbridge-input/apply_patch.ps1'
 
 permissions:
   contents: read
@@ -87,6 +88,8 @@ jobs:
           if (-not $?) { throw 'ReShade patch failed' }
           $src = Get-Content .\reshade-src\source\input_windows.cpp -Raw
           if (-not $src.Contains('b-bridge cross-process input relay')) { throw 'Patched ReShade source marker missing' }
+          $gui = Get-Content .\reshade-src\source\runtime_gui.cpp -Raw
+          if (-not $gui.Contains('M3K-BBRIDGE-RENDER-SCALE-MOUSE-LIMIT')) { throw 'ReShade scaling-aware mouse mapping not applied' }
       - name: Build patched ReShade x64
         shell: pwsh
         run: |
@@ -100,6 +103,7 @@ jobs:
           if (-not (Test-Path $dll)) { throw 'ReShade64.dll missing after build' }
           $ascii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll))
           if (-not $ascii.Contains('b-bridge input relay')) { throw 'Built ReShade DLL patch marker missing' }
+          if (-not $ascii.Contains('m3k-nr.ini')) { throw 'Compiled ReShade DLL missing M3K scale cursor logic' }
           New-Item -ItemType Directory -Path .\out-reshade -Force | Out-Null
           Copy-Item $dll .\out-reshade\ReShade64-bbridge.dll -Force
           Copy-Item .\reshade-src\LICENSE.md .\out-reshade\ReShade-LICENSE.md -Force
