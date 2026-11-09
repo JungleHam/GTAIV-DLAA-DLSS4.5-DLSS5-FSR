@@ -47,7 +47,7 @@ The shared official ReShade installation is restored away from the project input
 ### Open the in-game controls
 
 ```text
-Home key -> Add-ons -> GTA IV Scaling 1.2.2
+Delete key -> Add-ons -> GTA IV Scaling
 ```
 
 ## Features
@@ -80,7 +80,7 @@ Installer: **GTAIV-Scaling-Setup-v1.2.10.exe** (published as a GitHub Actions bu
 
 This package is built from the successful 1.2.10 baseline runtime: the working b-bridge input relay, viewport/presenter fix, DLAA/DLSS, FSR, DLSS 5 feeder, GPU-aware Neural Rendering updater, FusionFix handling, and install/repair/removal actions are bundled together. It supports clean installs and upgrades without relying on an earlier Scaling installer.
 
-**Keyboard behavior:** Home opens ReShade; F11 opens the Steam overlay. No End-key remapping is included.
+**Keyboard behavior:** Delete opens ReShade; F11 opens the Steam overlay. The ReShade startup prompt also displays Delete.
 
 ## Screenshots
 
@@ -107,7 +107,7 @@ Neural Rendering is available on RTX 20/30/40/50. RTX 20/30 use the ShortFuse co
 Open:
 
 ```text
-Home key -> Add-ons -> GTA IV Scaling 1.2.2
+Delete key -> Add-ons -> GTA IV Scaling
 ```
 
 The main panel is **GTA IV Scaling**.
