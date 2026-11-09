@@ -5,6 +5,7 @@ on:
     branches:
       - release/v1.2.10-standalone
       - fix/v1.2.10-reshade-cursor
+      - fix/v1.2.10-reshade-render-scale-mouse
     paths:
       - 'installer/GTAIV-Scaling-Setup-v1.2.10.iss'
       - 'installer/Run-Scaling-Action-v1.2.10.ps1'
@@ -42,7 +43,7 @@ jobs:
           gh run download 42619124189 --repo "$env:GITHUB_REPOSITORY" --name 'cleaned-prebuilt-runtime' --dir '_runtime-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the pinned cleaned-prebuilt-runtime artifact.' }
 
-          gh run download 42534466980 --repo "$env:GITHUB_REPOSITORY" --name 'prebuilt-reshade' --dir '_reshade-artifact'
+          gh run download 42644188102 --repo "$env:GITHUB_REPOSITORY" --name 'prebuilt-reshade' --dir '_reshade-artifact'
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the pinned prebuilt-reshade artifact.' }
 
       - name: Verify runtime, bridge client, viewport presenter and ReShade input patch
@@ -50,7 +51,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $expectedRuntime = 'E69D0F764117DEA1559CC45003D48CF7B19E05AC343E8B7618BD21FD573D6419'
-          $expectedReShade = '0BD8636C03AB3B9D2AD8FF400A834F2FE40AC369AB3314E8E17E0989924AFF48'
+          $expectedReShade = '7563DF1D1F9DA8B187CDDB9D7295EAE7523D7DE8934B3C6AF16D74AE8DB287D6'
           $expectedFeeder = 'D4125D1E0D9F28877D71FC58311E9C3A23A2F080D16E0E9E7D465A6E4B497648'
 
           $runtimeZip = Resolve-Path '.\_runtime-artifact\GTAIV-DLSS-Full-Runtime.zip'
@@ -101,6 +102,12 @@ jobs:
 
           $reshadeText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($reshadeDll))
           if (-not $reshadeText.ToLowerInvariant().Contains('b-bridge input relay')) { throw 'ReShade input-relay marker missing.' }
+          $reshadeBytes = [IO.File]::ReadAllBytes($reshadeDll)
+          $wide0 = [Text.Encoding]::Unicode.GetString($reshadeBytes)
+          $wide1 = [Text.Encoding]::Unicode.GetString($reshadeBytes, 1, $reshadeBytes.Length - 1)
+          if (-not ($wide0.Contains('m3k-nr.ini') -or $wide1.Contains('m3k-nr.ini'))) {
+            throw 'Scale-aware ReShade GUI patch marker missing from the DLL.'
+          }
 
           Write-Host "Verified runtime: $runtimeActual"
           Write-Host "Verified ReShade patch: $reshadeActual"
@@ -132,7 +139,7 @@ jobs:
           if (-not $core.Contains($runtimePin)) { throw 'Clean-install foundation does not pin the 1.2.10 runtime archive.' }
 
           $foundation = [IO.File]::ReadAllText('.\install\Install-DLAA-v1.2.10.bat')
-          if (-not $foundation.Contains('0BD8636C03AB3B9D2AD8FF400A834F2FE40AC369AB3314E8E17E0989924AFF48')) {
+          if (-not $foundation.Contains('7563DF1D1F9DA8B187CDDB9D7295EAE7523D7DE8934B3C6AF16D74AE8DB287D6')) {
             throw 'Foundation installer does not pin the matching ReShade input patch.'
           }
 
@@ -217,17 +224,17 @@ jobs:
           & $compiler '.\installer\GTAIV-Scaling-Setup-v1.2.10.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed: $LASTEXITCODE" }
 
-          $exe = '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.exe'
+          $exe = '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Render-Scale-Mouse-Test.exe'
           if (-not (Test-Path -LiteralPath $exe)) { throw 'Compiled standalone installer is missing.' }
           $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToUpperInvariant()
-          $hash | Set-Content '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.sha256' -Encoding ASCII
-          Write-Host "GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.exe SHA-256: $hash"
+          $hash | Set-Content '.\installer\out-v1210\GTAIV-Scaling-Setup-v1.2.10-Render-Scale-Mouse-Test.sha256' -Encoding ASCII
+          Write-Host "GTAIV-Scaling-Setup-v1.2.10-Render-Scale-Mouse-Test.exe SHA-256: $hash"
 
       - name: Upload full standalone installer
         uses: actions/upload-artifact@v4
         with:
-          name: GTAIV-Scaling-v1.2.10-Mouse-Fix-Test
+          name: GTAIV-Scaling-v1.2.10-Render-Scale-Mouse-Test
           path: |
-            installer/out-v1210/GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.exe
-            installer/out-v1210/GTAIV-Scaling-Setup-v1.2.10-Mouse-Fix-Test.sha256
+            installer/out-v1210/GTAIV-Scaling-Setup-v1.2.10-Render-Scale-Mouse-Test.exe
+            installer/out-v1210/GTAIV-Scaling-Setup-v1.2.10-Render-Scale-Mouse-Test.sha256
           retention-days: 90
