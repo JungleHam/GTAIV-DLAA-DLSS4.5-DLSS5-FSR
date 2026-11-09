@@ -182,7 +182,7 @@ jobs:
           }
 
           $action = [IO.File]::ReadAllText('.\installer\payload\Run-Scaling-Action-v1.2.10.ps1')
-          if (-not $action.Contains("Set-Ini $path 'INPUT' 'KeyOverlay' '46,0,0,0'")) {
+          if (-not $action.Contains('Set-Ini $path ''INPUT'' ''KeyOverlay'' ''46,0,0,0''')) {
             throw 'Install / Repair must configure ReShade KeyOverlay to VK_DELETE (46).'
           }
           if (-not $action.Contains('Set-ReShadeOverlayShortcut $Root') -or -not $action.Contains("'.trex\ReShade.ini'")) {
@@ -196,7 +196,7 @@ jobs:
           }
 
           $core = [IO.File]::ReadAllText('.\install\core\Install-DLAA-Core-v1.2.10.bat')
-          if (-not $core.Contains("Set-IniValue $rsIni 'INPUT' 'KeyOverlay' '46,0,0,0'")) {
+          if (-not $core.Contains('Set-IniValue $rsIni ''INPUT'' ''KeyOverlay'' ''46,0,0,0''')) {
             throw 'Fresh foundation installs must also configure ReShade KeyOverlay to Delete.'
           }
           Write-Host 'PowerShell components parse and the Inno package references the Delete-key shortcut consistently.'
