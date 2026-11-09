@@ -192,6 +192,7 @@ jobs:
           if (-not $diSource.Contains('M3K-SOCIAL-CLUB-END-KEY')) { throw 'Optional Social Club End-key remap marker missing' }
           if (-not $diSource.Contains('M3K-SOCIAL-CLUB-HOOK-ALWAYS')) { throw 'Optional Social Club low-level hook installation marker missing' }
           if (-not $windowSource.Contains('M3K-BBRIDGE-RELAY-ACK-HOOK')) { throw 'Verified relay handshake hook marker missing' }
+          if (-not $windowSource.Contains('M3K-SOCIAL-CLUB-ROUTE')) { throw 'Social Club synthetic Home routing marker missing' }
           git -C _bbridge diff --check
           python -m pip install --disable-pip-version-check meson==0.64.1 ninja==1.11.1.1
           $bbridgeRoot = (Resolve-Path .\_bbridge).Path
@@ -211,6 +212,7 @@ jobs:
           if (-not $clientAscii.Contains('M3K-STEAM-INPUT')) { throw 'Built b-bridge client DLL is missing the Steam F11 input trace marker' }
           if (-not $clientAscii.Contains('M3K-SOCIAL-CLUB-END-KEY')) { throw 'Built b-bridge client DLL is missing the optional Social Club End-key remap marker' }
           if (-not $clientAscii.Contains('M3K-SOCIAL-CLUB-HOOK-ALWAYS')) { throw 'Built b-bridge client DLL is missing the optional Social Club hook installation marker' }
+          if (-not $clientAscii.Contains('M3K-SOCIAL-CLUB-ROUTE')) { throw 'Built b-bridge client DLL is missing the Social Club/ReShade input separation marker' }
           SetupVS -Platform x64
           meson setup --buildtype release --backend ninja _prebuilt64 --debug
           Copy-Item .\Directory.Build.Props .\_prebuilt64 -Force
