@@ -275,7 +275,7 @@ if (!$gui.Contains('#include <Windows.h>')) {
 #include <Windows.h>
 '@
     $win32Includes = Normalize-Text $win32Includes
-    $gui = $gui.Replace($includeAnchor, $includeAnchor + "\`n" + $win32Includes)
+    $gui = $gui.Replace($includeAnchor, $includeAnchor + "`n" + $win32Includes)
 }
 
 # M3K virtualizes GetClientRect in the 32-bit GTA IV process to the logical
