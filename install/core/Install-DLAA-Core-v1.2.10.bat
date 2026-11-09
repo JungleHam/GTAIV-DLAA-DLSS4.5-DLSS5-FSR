@@ -44,6 +44,19 @@ function Assert-SHA256([string]$p,[string]$e){$a=(Get-FileHash -Algorithm SHA256
 function Write-NoBom([string]$p,[string[]]$l){[IO.File]::WriteAllLines($p,$l,(New-Object Text.UTF8Encoding($false)))}
 function Set-IniValue([string]$Path,[string]$Section,[string]$Key,[string]$Value){if(Test-Path -LiteralPath $Path){$arr=@(Get-Content -LiteralPath $Path)}else{$arr=@()};$lines=New-Object 'System.Collections.Generic.List[string]';foreach($x in $arr){[void]$lines.Add([string]$x)};$sec='['+$Section+']';$start=-1;for($i=0;$i -lt $lines.Count;$i++){if($lines[$i].Trim() -ieq $sec){$start=$i;break}};if($start -lt 0){if($lines.Count -gt 0 -and $lines[$lines.Count-1] -ne ''){[void]$lines.Add('')};[void]$lines.Add($sec);[void]$lines.Add("$Key=$Value")}else{$end=$lines.Count;for($i=$start+1;$i -lt $lines.Count;$i++){if($lines[$i] -match '^\s*\[.+\]\s*$'){$end=$i;break}};$found=$false;for($i=$start+1;$i -lt $end;$i++){if($lines[$i] -match ('^\s*'+[regex]::Escape($Key)+'\s*=')){$lines[$i]="$Key=$Value";$found=$true;break}};if(-not $found){$lines.Insert($start+1,"$Key=$Value")}};Write-NoBom $Path $lines.ToArray()}
 function Set-KeyEquals([string]$Path,[string]$Key,[string]$Value){$text=if(Test-Path -LiteralPath $Path){[IO.File]::ReadAllText($Path)}else{''};$pat='(?m)^\s*'+[regex]::Escape($Key)+'\s*=\s*.*$';$line="$Key = $Value";if($text -match $pat){$text=[regex]::Replace($text,$pat,$line)}else{if($text.Length -gt 0 -and -not $text.EndsWith("`n")){$text+="`r`n"};$text+=$line+"`r`n"};[IO.File]::WriteAllText($Path,$text,(New-Object Text.UTF8Encoding($false)))}
+function Merge-KeyValueDefaults([string]$Source,[string]$Target){
+ if(-not(Test-Path -LiteralPath $Source -PathType Leaf)){Fail "Missing runtime defaults: $Source"}
+ if(-not(Test-Path -LiteralPath $Target -PathType Leaf)){
+  $parent=Split-Path -Parent $Target;if($parent){New-Item -ItemType Directory -Path $parent -Force|Out-Null}
+  Copy-Item -LiteralPath $Source -Destination $Target -Force;return
+ }
+ foreach($line in [IO.File]::ReadAllLines($Source)){
+  if($line -match '^\s*([A-Za-z0-9_.-]+)\s*=\s*(.*)$'){
+   $key=$Matches[1];$value=$Matches[2];$current=[IO.File]::ReadAllText($Target)
+   if(-not [regex]::IsMatch($current,'(?im)^\s*'+[regex]::Escape($key)+'\s*=')){Set-KeyEquals $Target $key $value}
+  }
+ }
+}
 function Copy-IfExists([string]$s,[string]$d){if(Test-Path -LiteralPath $s){$p=Split-Path -Parent $d;if($p -and -not(Test-Path -LiteralPath $p)){New-Item -ItemType Directory -Path $p -Force|Out-Null};Copy-Item -LiteralPath $s -Destination $d -Force}}
 function Cleanup{if(Test-Path -LiteralPath $Temp){Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue}}
 
@@ -111,7 +124,7 @@ try{
  Set-IniValue $ffCfg 'MAIN' 'GraphicsAPI' '0';Set-IniValue $ffCfg 'MAIN' 'Windowed' '1';Set-IniValue $ffCfg 'MAIN' 'BorderlessWindowed' '1';Set-IniValue $ffCfg 'FRAMELIMIT' 'FpsLimitPreset' '0';Set-IniValue $ffCfg 'MISC' 'Antialiasing' '5'
  $cmdPath=Join-Path $Game 'commandline.txt';$cmd=if(Test-Path -LiteralPath $cmdPath){[IO.File]::ReadAllText($cmdPath)}else{''};if($cmd -notmatch '(?i)(^|\s)-windowed(\s|$)'){if($cmd.Trim().Length -gt 0){$cmd=$cmd.TrimEnd()+"`r`n"};$cmd+="-windowed`r`n";[IO.File]::WriteAllText($cmdPath,$cmd,(New-Object Text.UTF8Encoding($false)))}
  $rootD3D9=Join-Path $Game 'd3d9.dll';if(Test-Path -LiteralPath $rootD3D9){Move-Item -LiteralPath $rootD3D9 -Destination (Join-Path $Game 'd3d9Hooked.dll') -Force};Copy-Item -LiteralPath (Join-Path $runtime 'd3d9.dll') -Destination $rootD3D9 -Force
- New-Item -ItemType Directory -Path $Trex -Force|Out-Null;Copy-Item -LiteralPath (Join-Path $runtime 'NvRemixBridge.exe') -Destination (Join-Path $Trex 'NvRemixBridge.exe') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'd3d9vk_x64.dll') -Destination (Join-Path $Trex 'd3d9vk_x64.dll') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'bridge.conf') -Destination (Join-Path $Trex 'bridge.conf') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'dxvk.conf') -Destination (Join-Path $Game 'dxvk.conf') -Force;Set-KeyEquals (Join-Path $Trex 'bridge.conf') 'clientFrameCap' '0'
+ New-Item -ItemType Directory -Path $Trex -Force|Out-Null;Copy-Item -LiteralPath (Join-Path $runtime 'NvRemixBridge.exe') -Destination (Join-Path $Trex 'NvRemixBridge.exe') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'd3d9vk_x64.dll') -Destination (Join-Path $Trex 'd3d9vk_x64.dll') -Force;Merge-KeyValueDefaults (Join-Path $runtime 'bridge.conf') (Join-Path $Trex 'bridge.conf');Merge-KeyValueDefaults (Join-Path $runtime 'dxvk.conf') (Join-Path $Game 'dxvk.conf');Set-KeyEquals (Join-Path $Trex 'bridge.conf') 'clientFrameCap' '0'
  $rsTarget=Join-Path $Trex 'NvRemixBridge.exe';$rs=Start-Process -FilePath $ReshadeSetup -ArgumentList @("`"$rsTarget`"",'--api','vulkan','--headless') -Wait -PassThru;if($rs.ExitCode -ne 0){Fail "Official ReShade setup failed: $($rs.ExitCode)"};$ReShadeInstalled=$true;$rsIni=Join-Path $Trex 'ReShade.ini';if(-not(Test-Path -LiteralPath $rsIni)){Fail 'ReShade.ini was not created.'}
  $shaderDir=Join-Path $Trex 'reshade-shaders\Shaders';$texDir=Join-Path $Trex 'reshade-shaders\Textures';New-Item -ItemType Directory -Path $shaderDir -Force|Out-Null;New-Item -ItemType Directory -Path $texDir -Force|Out-Null
  Copy-Item -LiteralPath (Join-Path $runtime 'dlss5-feed.addon64') -Destination (Join-Path $Trex 'dlss5-feed.addon64') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'DLSS5_Feed.fx') -Destination (Join-Path $shaderDir 'DLSS5_Feed.fx') -Force;Copy-Item -LiteralPath (Join-Path $runtime 'nvngx_dlss.dll') -Destination (Join-Path $Trex 'nvngx_dlss.dll') -Force
